@@ -91,9 +91,7 @@ def get_extract(
                 f"AniList indisponible et aucun cache local pour se replier : {exc}"
             ) from exc
         fallback_date, fallback_path = fallback
-        logger.warning(
-            "AniList indisponible (%s) : repli sur le cache du %s.", exc, fallback_date
-        )
+        logger.warning("AniList indisponible (%s) : repli sur le cache du %s.", exc, fallback_date)
         return AnilistExtract(
             pd.read_parquet(fallback_path), fallback_date, fallback_path, is_fallback=True
         )
