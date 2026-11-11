@@ -46,6 +46,10 @@ class AnilistSourceConfig(BaseModel):
     page_size: int = Field(gt=0, le=50)
     max_retries: int = Field(ge=0)
     retry_delay_seconds: float = Field(ge=0)
+    # Pause entre deux pages, pour rester sous la limite de requêtes de l'API.
+    request_interval_seconds: float = Field(ge=0)
+    # Plafond de pages (None = tout le catalogue) ; utile pour une démonstration rapide.
+    max_pages: int | None = Field(default=None, gt=0)
 
 
 class SourcesConfig(BaseModel):

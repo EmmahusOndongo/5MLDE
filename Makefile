@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint format test up down logs
+.PHONY: help setup lint format test ingest up down logs
 
 help:  ## Liste les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -17,6 +17,9 @@ format:  ## Corrige automatiquement le style
 
 test:  ## Tests unitaires (sans la stack Docker)
 	uv run pytest -m "not integration"
+
+ingest:  ## Télécharge MAL (commit figé) et AniList (cache daté)
+	uv run python -m anime_mlops.data.ingest
 
 up:  ## Démarre la stack Docker (PostgreSQL, MLflow)
 	docker compose up -d --build --wait

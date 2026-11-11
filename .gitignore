@@ -221,7 +221,7 @@ __marimo__/
 
 # --- Projet anime-mlops ---
 # Données téléchargées par script, jamais versionnées
-data/
+/data/
 # Artefacts MLflow locaux
 mlruns/
 mlartifacts/

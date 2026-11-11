@@ -23,6 +23,10 @@ sources:
     page_size: 50
     max_retries: 3
     retry_delay_seconds: 5
+    # 2 s entre deux pages = 30 requêtes/minute, sous la limite publique d'AniList.
+    request_interval_seconds: 2.0
+    # null = catalogue complet (plusieurs centaines de pages) ; un entier limite l'extraction.
+    max_pages: null
 
 quality:
   min_rows: 1000
