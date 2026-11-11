@@ -1,0 +1,44 @@
+[project]
+name = "anime-mlops"
+version = "0.1.0"
+description = "Chaîne MLOps de prédiction du score MyAnimeList d'un anime avant diffusion"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "pydantic>=2.9,<3",
+    "pydantic-settings[yaml]>=2.6,<3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/anime_mlops"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/W : style, F : erreurs, I : imports, B : bugs probables, UP : syntaxe moderne,
+# SIM : simplifications, S : sécurité (bandit), PT : bonnes pratiques pytest
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "S", "PT"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]  # assert autorisé dans les tests
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: tests nécessitant la stack Docker (PostgreSQL, MLflow)",
+]

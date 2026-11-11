@@ -218,3 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Projet anime-mlops ---
+# Données téléchargées par script, jamais versionnées
+data/
+# Artefacts MLflow locaux
+mlruns/
+mlartifacts/
+# Résultats bruts des tests de charge
+load_tests/results/*.csv

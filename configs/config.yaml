@@ -1,0 +1,54 @@
+# Configuration du projet. Toute valeur peut être surchargée par variable
+# d'environnement : préfixe ANIME_, niveaux séparés par "__".
+# Exemple : ANIME_MODEL__N_ESTIMATORS=50, ANIME_DATABASE__HOST=postgres
+# Les secrets (mots de passe) ne figurent jamais ici : voir .env.example.
+
+# Graine unique : découpage train/test, modèle, échantillonnages.
+seed: 42
+
+paths:
+  data_dir: data
+  raw_dir: data/raw
+  cache_dir: data/cache
+  reports_dir: data/reports
+
+sources:
+  mal:
+    repo: meesvandongen/anime-dataset
+    file_path: data/anime-standalone.csv
+    # Version des données = hash de commit figé (jamais "main" pour un entraînement).
+    commit: null
+  anilist:
+    url: https://graphql.anilist.co
+    page_size: 50
+    max_retries: 3
+    retry_delay_seconds: 5
+
+quality:
+  min_rows: 1000
+  min_join_match_rate: 0.90
+  max_missing_rate: 0.30
+  target_min: 0.0
+  target_max: 10.0
+
+model:
+  type: random_forest
+  n_estimators: 200
+  max_depth: 12
+  min_samples_leaf: 2
+  # -1 : entraînement parallélisé sur tous les cœurs disponibles.
+  n_jobs: -1
+  test_size: 0.2
+  top_n_studios: 30
+  top_n_tags: 50
+
+mlflow:
+  tracking_uri: http://localhost:5000
+  experiment_name: anime-score
+  registered_model_name: anime-score-regressor
+
+database:
+  host: localhost
+  port: 5432
+  name: anime
+  user: anime
