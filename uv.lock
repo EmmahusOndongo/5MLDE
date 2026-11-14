@@ -103,12 +103,13 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
-    { name = "mlflow" },
+    { name = "mlflow-skinny" },
     { name = "pandas" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "pydantic-settings", extra = ["yaml"] },
     { name = "scikit-learn" },
+    { name = "skops" },
     { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -116,6 +117,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "httpx2" },
+    { name = "mlflow" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -124,12 +126,13 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = "==0.162.2" },
-    { name = "mlflow", specifier = "==3.18.0" },
+    { name = "mlflow-skinny", specifier = "==3.18.0" },
     { name = "pandas", specifier = ">=2.2,<3" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
     { name = "pydantic", specifier = ">=2.9,<3" },
     { name = "pydantic-settings", extras = ["yaml"], specifier = ">=2.6,<3" },
     { name = "scikit-learn", specifier = ">=1.5,<2" },
+    { name = "skops", specifier = ">=0.16,<1" },
     { name = "sqlalchemy", specifier = ">=2.0,<3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.38,<1" },
 ]
@@ -137,6 +140,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx2", specifier = ">=2.13,<3" },
+    { name = "mlflow", specifier = "==3.18.0" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-cov", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.8" },

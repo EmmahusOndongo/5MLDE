@@ -82,6 +82,9 @@ class MlflowConfig(BaseModel):
 class ApiConfig(BaseModel):
     model_alias: str = Field(min_length=1)
     max_batch_size: int = Field(gt=0, le=1000)
+    host: str = Field(min_length=1)
+    port: int = Field(gt=0, le=65_535)
+    workers: int = Field(gt=0, le=32)
 
 
 class DatabaseConfig(BaseModel):

@@ -1,6 +1,7 @@
 """Enregistre un régresseur factice pour développer l'API avant le vrai modèle."""
 
 import argparse
+import sys
 
 import mlflow
 import mlflow.sklearn
@@ -61,6 +62,10 @@ def _refuse_to_replace_real_model(
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        # MLflow affiche des emojis dans ses liens de run ; certaines consoles Windows
+        # utilisent encore CP-1252 et lèvent sinon UnicodeEncodeError en fin de run.
+        sys.stdout.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--force",

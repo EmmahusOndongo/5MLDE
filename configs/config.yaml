@@ -51,6 +51,9 @@ api:
   # Alias mutable décidé par A ; l'API résout ensuite une version immuable au chargement.
   model_alias: champion
   max_batch_size: 100
+  host: 127.0.0.1
+  port: 8000
+  workers: 1
 
 database:
   host: localhost
