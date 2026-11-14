@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -75,19 +76,29 @@ class ModelMetadata(BaseModel):
 
 
 class PredictionResponse(BaseModel):
+    prediction_id: UUID
     prediction: float
+    persisted: bool
     model: ModelMetadata
 
 
 class BatchPredictionResponse(BaseModel):
+    prediction_ids: list[UUID]
     predictions: list[float]
     count: int
+    persisted: bool
     model: ModelMetadata
+
+
+class ComponentHealth(BaseModel):
+    status: Literal["ok", "degraded"]
+    reason: str | None = None
 
 
 class HealthResponse(BaseModel):
     status: Literal["ok", "degraded"]
     model: ModelMetadata | None
+    database: ComponentHealth
     reason: str | None = None
 
 
@@ -98,3 +109,19 @@ class ModelResponse(BaseModel):
 class ReloadResponse(BaseModel):
     status: Literal["reloaded"] = "reloaded"
     model: ModelMetadata
+
+
+class FeedbackInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    prediction_id: UUID
+    actual_score: Score
+    comment: Annotated[str, Field(min_length=1, max_length=1000)] | None = None
+
+
+class FeedbackResponse(BaseModel):
+    feedback_id: UUID
+    prediction_id: UUID
+    actual_score: float
+    source: Literal["manual", "automatic"]
+    created_at: datetime
