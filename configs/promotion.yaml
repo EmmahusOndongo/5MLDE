@@ -1,10 +1,18 @@
-# Règles de mise en service (registre MLflow).
-# Un nouveau modèle devient "champion" si sa métrique de décision est au moins
-# aussi bonne que celle du champion actuel ; sinon il reste "challenger".
+# Règles de mise en service d'une version du modèle (registre MLflow).
+# Détail de la stratégie : docs/mise-en-service.md
+
+# Métrique de décision, lue dans le run d'entraînement sous le nom "test_<metric>".
 decision_metric: mae
 lower_is_better: true
+
 # Dégradation tolérée par rapport au champion (0.0 = doit faire au moins aussi bien).
 tolerance: 0.0
+
+# Critères d'acceptation : s'ils ne sont pas remplis, la version est rejetée
+# et ne reçoit aucun alias.
+require_validated_data: true   # les contrôles qualité des données doivent être passés
+must_beat_baseline: true       # doit faire mieux qu'une prédiction constante (la moyenne)
+
 aliases:
-  champion: champion
-  challenger: challenger
+  champion: champion       # version servie par l'API
+  challenger: challenger   # dernière version valide qui n'a pas battu le champion

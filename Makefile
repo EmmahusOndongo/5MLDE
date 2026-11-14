@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint format test ingest train up down logs
+.PHONY: help setup lint format test ingest train promote rollback status up down logs
 
 help:  ## Liste les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -21,8 +21,17 @@ test:  ## Tests unitaires (sans la stack Docker)
 ingest:  ## Télécharge MAL (commit figé) et AniList (cache daté)
 	uv run python -m anime_mlops.data.ingest
 
-train:  ## Ingestion, contrôles qualité, entraînement et traçabilité MLflow
+train:  ## Ingestion, contrôles qualité, entraînement, traçabilité MLflow et promotion
 	uv run python -m anime_mlops.training.train
+
+status:  ## Versions du modèle, alias et tags dans le registre
+	uv run python -m anime_mlops.training.promote status
+
+promote:  ## Applique les règles de promotion (dernière version, ou VERSION=N)
+	uv run python -m anime_mlops.training.promote promote $(if $(VERSION),--version $(VERSION))
+
+rollback:  ## Retour arrière du champion (version remplacée, ou VERSION=N)
+	uv run python -m anime_mlops.training.promote rollback $(if $(VERSION),--version $(VERSION))
 
 up:  ## Démarre la stack Docker (PostgreSQL, MLflow)
 	docker compose up -d --build --wait

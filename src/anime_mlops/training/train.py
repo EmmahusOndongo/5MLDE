@@ -5,7 +5,7 @@ Usage : ``python -m anime_mlops.training.train``
 Chaque exécution enregistre de quoi la rejouer à l'identique : hyperparamètres, graine,
 versions des données, version du code, ainsi que les métriques et artefacts produits.
 Le modèle est ajouté au registre comme nouvelle version ; sa mise en service (alias)
-est décidée séparément par les règles de promotion.
+est décidée ensuite par les règles de promotion (``anime_mlops.training.promote``).
 """
 
 import json
@@ -22,12 +22,13 @@ import sklearn
 from mlflow import MlflowClient
 from sklearn.model_selection import train_test_split
 
-from anime_mlops.config import Settings, get_settings
+from anime_mlops.config import Settings, get_settings, load_promotion_rules
 from anime_mlops.data.dataset import DataVersions, prepare_training_data
 from anime_mlops.data.validate import ValidationReport
 from anime_mlops.features.build import FEATURES, split_features_target
 from anime_mlops.training.evaluate import baseline_mae, error_by_group, regression_metrics
 from anime_mlops.training.model import build_model, feature_importances
+from anime_mlops.training.promote import promote
 from anime_mlops.versioning import code_version
 
 logger = logging.getLogger(__name__)
@@ -181,7 +182,9 @@ def main() -> None:
     settings = get_settings()
     prepared = prepare_training_data(settings)
     features, target = split_features_target(prepared.training)
-    train_and_log(features, target, prepared.versions, settings, prepared.reports)
+    result = train_and_log(features, target, prepared.versions, settings, prepared.reports)
+    # Mise en service éventuelle, selon les règles de configs/promotion.yaml.
+    promote(settings, load_promotion_rules(), result.model_version)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+import yaml
 from pydantic import BaseModel, Field, SecretStr
 from pydantic_settings import (
     BaseSettings,
@@ -18,6 +19,7 @@ from pydantic_settings import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_FILE = PROJECT_ROOT / "configs" / "config.yaml"
+DEFAULT_PROMOTION_FILE = PROJECT_ROOT / "configs" / "promotion.yaml"
 CONFIG_FILE_ENV_VAR = "ANIME_CONFIG_FILE"
 
 
@@ -132,6 +134,37 @@ class Settings(BaseSettings):
             raise FileNotFoundError(f"Fichier de configuration introuvable : {yaml_file}")
         yaml_settings = YamlConfigSettingsSource(settings_cls, yaml_file=yaml_file)
         return init_settings, env_settings, dotenv_settings, yaml_settings
+
+
+class PromotionAliases(BaseModel):
+    champion: str
+    challenger: str
+
+
+class PromotionRules(BaseModel):
+    """Règles de mise en service, lues dans ``configs/promotion.yaml``."""
+
+    decision_metric: str
+    lower_is_better: bool
+    tolerance: float = Field(ge=0)
+    require_validated_data: bool
+    must_beat_baseline: bool
+    aliases: PromotionAliases
+
+    @property
+    def metric_key(self) -> str:
+        """Nom de la métrique de décision dans le run et dans les tags de version."""
+        return f"test_{self.decision_metric}"
+
+    @property
+    def baseline_key(self) -> str:
+        return f"baseline_test_{self.decision_metric}"
+
+
+def load_promotion_rules(path: Path = DEFAULT_PROMOTION_FILE) -> PromotionRules:
+    if not path.is_file():
+        raise FileNotFoundError(f"Fichier de règles de promotion introuvable : {path}")
+    return PromotionRules.model_validate(yaml.safe_load(path.read_text("utf-8")))
 
 
 @lru_cache
