@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint format test ingest up down logs
+.PHONY: help setup lint format test ingest train up down logs
 
 help:  ## Liste les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -20,6 +20,9 @@ test:  ## Tests unitaires (sans la stack Docker)
 
 ingest:  ## Télécharge MAL (commit figé) et AniList (cache daté)
 	uv run python -m anime_mlops.data.ingest
+
+train:  ## Ingestion, contrôles qualité, entraînement et traçabilité MLflow
+	uv run python -m anime_mlops.training.train
 
 up:  ## Démarre la stack Docker (PostgreSQL, MLflow)
 	docker compose up -d --build --wait
