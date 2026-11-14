@@ -57,3 +57,5 @@ database:
   port: 5432
   name: anime
   user: anime
+  connect_timeout_seconds: 2
+  retry_cooldown_seconds: 5

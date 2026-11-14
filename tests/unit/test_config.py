@@ -56,6 +56,15 @@ def test_database_password_is_not_exposed(monkeypatch):
     assert "s3cret" in settings.database.url
 
 
+def test_database_credentials_are_url_encoded(monkeypatch):
+    monkeypatch.setenv("ANIME_DATABASE__PASSWORD", "p@ss/word")
+
+    url = Settings().database.url
+
+    assert "p%40ss%2Fword" in url
+    assert "p@ss/word" not in url
+
+
 def test_mal_raw_url_requires_a_commit():
     mal = Settings().sources.mal
 

@@ -3,6 +3,8 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from time import perf_counter
+from uuid import UUID, uuid4
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, status
@@ -16,11 +18,23 @@ from anime_mlops.api.model_service import (
     ModelUnavailableError,
     PredictionError,
 )
+from anime_mlops.api.persistence import (
+    DatabaseStore,
+    DatabaseUnavailableError,
+    FeedbackConflictError,
+    Persistence,
+    PredictionNotFoundError,
+    PredictionTrace,
+)
 from anime_mlops.api.schemas import (
     PREDICTION_FEATURES,
     BatchPredictionRequest,
     BatchPredictionResponse,
+    ComponentHealth,
+    FeedbackInput,
+    FeedbackResponse,
     HealthResponse,
+    ModelMetadata,
     ModelResponse,
     PredictionInput,
     PredictionResponse,
@@ -35,11 +49,17 @@ def create_app(
     *,
     settings: Settings | None = None,
     loader: ModelLoader | None = None,
+    persistence: Persistence | None = None,
     load_model_on_startup: bool = True,
 ) -> FastAPI:
     """Construit l'application et permet d'injecter un chargeur isolé dans les tests."""
     resolved_settings = settings or get_settings()
     resolved_loader = loader or MlflowRegistryLoader(resolved_settings.mlflow.tracking_uri)
+    resolved_persistence = persistence or DatabaseStore.from_url(
+        resolved_settings.database.url,
+        connect_timeout_seconds=resolved_settings.database.connect_timeout_seconds,
+        retry_cooldown_seconds=resolved_settings.database.retry_cooldown_seconds,
+    )
     runtime = ModelRuntime(
         model_name=resolved_settings.mlflow.registered_model_name,
         alias=resolved_settings.api.model_alias,
@@ -55,7 +75,12 @@ def create_app(
             except ModelLoadError:
                 # Le processus reste vivant pour exposer /health et permettre /admin/reload.
                 LOGGER.warning("L'API démarre sans modèle disponible.", exc_info=True)
-        yield
+        if not resolved_persistence.initialize():
+            LOGGER.warning("L'API démarre sans persistance disponible.")
+        try:
+            yield
+        finally:
+            resolved_persistence.close()
 
     application = FastAPI(
         title="Anime Score API",
@@ -64,6 +89,41 @@ def create_app(
         lifespan=lifespan,
     )
     application.state.model_runtime = runtime
+    application.state.persistence = resolved_persistence
+
+    def build_trace(
+        *,
+        prediction_id: UUID,
+        endpoint: str,
+        input_data: dict[str, object],
+        duration_ms: float,
+        prediction: float | None = None,
+        metadata: ModelMetadata | None = None,
+        error: ModelUnavailableError | PredictionError | None = None,
+        batch_id: UUID | None = None,
+    ) -> PredictionTrace:
+        if metadata is None and runtime.is_ready():
+            metadata = runtime.metadata()
+        return PredictionTrace(
+            id=prediction_id,
+            endpoint=endpoint,
+            input_data=input_data,
+            duration_ms=duration_ms,
+            prediction=prediction,
+            model_name=metadata.name if metadata else runtime.model_name,
+            model_alias=metadata.alias if metadata else runtime.alias,
+            model_version=metadata.version if metadata else None,
+            model_run_id=metadata.run_id if metadata else None,
+            error_code=(
+                "model_unavailable"
+                if isinstance(error, ModelUnavailableError)
+                else "prediction_failed"
+                if error
+                else None
+            ),
+            error_message=str(error)[:1000] if error else None,
+            batch_id=batch_id,
+        )
 
     @application.exception_handler(ModelUnavailableError)
     async def handle_model_unavailable(
@@ -91,6 +151,36 @@ def create_app(
             message=str(exc),
         )
 
+    @application.exception_handler(DatabaseUnavailableError)
+    async def handle_database_unavailable(
+        _request: Request, exc: DatabaseUnavailableError
+    ) -> JSONResponse:
+        return _error_response(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="database_unavailable",
+            message=str(exc),
+        )
+
+    @application.exception_handler(PredictionNotFoundError)
+    async def handle_prediction_not_found(
+        _request: Request, exc: PredictionNotFoundError
+    ) -> JSONResponse:
+        return _error_response(
+            status.HTTP_404_NOT_FOUND,
+            code="prediction_not_found",
+            message=str(exc),
+        )
+
+    @application.exception_handler(FeedbackConflictError)
+    async def handle_feedback_conflict(
+        _request: Request, exc: FeedbackConflictError
+    ) -> JSONResponse:
+        return _error_response(
+            status.HTTP_409_CONFLICT,
+            code="feedback_conflict",
+            message=str(exc),
+        )
+
     @application.get(
         "/health",
         response_model=HealthResponse,
@@ -98,10 +188,16 @@ def create_app(
         tags=["exploitation"],
     )
     def health() -> HealthResponse | JSONResponse:
+        database_status = resolved_persistence.status()
+        database_health = ComponentHealth(
+            status="ok" if database_status.available else "degraded",
+            reason=database_status.reason,
+        )
         if not runtime.is_ready():
             response = HealthResponse(
                 status="degraded",
                 model=None,
+                database=database_health,
                 reason=runtime.last_error() or "Aucun modèle n'est chargé.",
             )
             return JSONResponse(
@@ -109,11 +205,13 @@ def create_app(
                 content=response.model_dump(mode="json"),
             )
 
-        reason = runtime.last_error()
+        model_reason = runtime.last_error()
+        reasons = [reason for reason in (model_reason, database_status.reason) if reason]
         return HealthResponse(
-            status="degraded" if reason else "ok",
+            status="degraded" if reasons else "ok",
             model=runtime.metadata(),
-            reason=reason,
+            database=database_health,
+            reason=" ".join(reasons) or None,
         )
 
     @application.get("/model", response_model=ModelResponse, tags=["exploitation"])
@@ -122,9 +220,46 @@ def create_app(
 
     @application.post("/predict", response_model=PredictionResponse, tags=["prédiction"])
     def predict_one(payload: PredictionInput) -> PredictionResponse:
-        model_input = pd.DataFrame.from_records([payload.to_record()], columns=PREDICTION_FEATURES)
-        predictions, metadata = runtime.predict(model_input)
-        return PredictionResponse(prediction=predictions[0], model=metadata)
+        prediction_id = uuid4()
+        record = payload.to_record()
+        model_input = pd.DataFrame.from_records([record], columns=PREDICTION_FEATURES)
+        started_at = perf_counter()
+        try:
+            predictions, metadata = runtime.predict(model_input)
+        except (ModelUnavailableError, PredictionError) as exc:
+            duration_ms = (perf_counter() - started_at) * 1000
+            resolved_persistence.record_predictions(
+                [
+                    build_trace(
+                        prediction_id=prediction_id,
+                        endpoint="/predict",
+                        input_data=record,
+                        duration_ms=duration_ms,
+                        error=exc,
+                    )
+                ]
+            )
+            raise
+
+        duration_ms = (perf_counter() - started_at) * 1000
+        persisted = resolved_persistence.record_predictions(
+            [
+                build_trace(
+                    prediction_id=prediction_id,
+                    endpoint="/predict",
+                    input_data=record,
+                    duration_ms=duration_ms,
+                    prediction=predictions[0],
+                    metadata=metadata,
+                )
+            ]
+        )
+        return PredictionResponse(
+            prediction_id=prediction_id,
+            prediction=predictions[0],
+            persisted=persisted,
+            model=metadata,
+        )
 
     @application.post("/predict/batch", response_model=BatchPredictionResponse, tags=["prédiction"])
     def predict_batch(payload: BatchPredictionRequest) -> BatchPredictionResponse:
@@ -141,11 +276,72 @@ def create_app(
             )
         records = [instance.to_record() for instance in payload.instances]
         model_input = pd.DataFrame.from_records(records, columns=PREDICTION_FEATURES)
-        predictions, metadata = runtime.predict(model_input)
+        batch_id = uuid4()
+        prediction_ids = [uuid4() for _instance in payload.instances]
+        started_at = perf_counter()
+        try:
+            predictions, metadata = runtime.predict(model_input)
+        except (ModelUnavailableError, PredictionError) as exc:
+            duration_ms = (perf_counter() - started_at) * 1000
+            resolved_persistence.record_predictions(
+                [
+                    build_trace(
+                        prediction_id=prediction_id,
+                        endpoint="/predict/batch",
+                        input_data=record,
+                        duration_ms=duration_ms,
+                        error=exc,
+                        batch_id=batch_id,
+                    )
+                    for prediction_id, record in zip(prediction_ids, records, strict=True)
+                ]
+            )
+            raise
+
+        duration_ms = (perf_counter() - started_at) * 1000
+        persisted = resolved_persistence.record_predictions(
+            [
+                build_trace(
+                    prediction_id=prediction_id,
+                    endpoint="/predict/batch",
+                    input_data=record,
+                    duration_ms=duration_ms,
+                    prediction=prediction,
+                    metadata=metadata,
+                    batch_id=batch_id,
+                )
+                for prediction_id, record, prediction in zip(
+                    prediction_ids, records, predictions, strict=True
+                )
+            ]
+        )
         return BatchPredictionResponse(
+            prediction_ids=prediction_ids,
             predictions=predictions,
             count=len(predictions),
+            persisted=persisted,
             model=metadata,
+        )
+
+    @application.post(
+        "/feedback",
+        response_model=FeedbackResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["feedback"],
+    )
+    def add_feedback(payload: FeedbackInput) -> FeedbackResponse:
+        feedback = resolved_persistence.add_feedback(
+            prediction_id=payload.prediction_id,
+            actual_score=payload.actual_score,
+            source="manual",
+            comment=payload.comment,
+        )
+        return FeedbackResponse(
+            feedback_id=feedback.id,
+            prediction_id=feedback.prediction_id,
+            actual_score=feedback.actual_score,
+            source=feedback.source,
+            created_at=feedback.created_at,
         )
 
     @application.post("/admin/reload", response_model=ReloadResponse, tags=["administration"])

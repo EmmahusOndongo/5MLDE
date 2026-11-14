@@ -7,6 +7,7 @@ variables d'environnement ``ANIME_*``, fichier ``.env``, puis ``configs/config.y
 import os
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from pydantic import BaseModel, Field, SecretStr
 from pydantic_settings import (
@@ -88,14 +89,17 @@ class DatabaseConfig(BaseModel):
     port: int
     name: str
     user: str
+    connect_timeout_seconds: int = Field(gt=0, le=30)
+    retry_cooldown_seconds: float = Field(ge=0, le=300)
     # Jamais dans le YAML : fourni par ANIME_DATABASE__PASSWORD (.env ou environnement).
     password: SecretStr = SecretStr("")
 
     @property
     def url(self) -> str:
         """URL SQLAlchemy (contient le mot de passe : ne pas journaliser)."""
-        password = self.password.get_secret_value()
-        return f"postgresql+psycopg://{self.user}:{password}@{self.host}:{self.port}/{self.name}"
+        user = quote_plus(self.user)
+        password = quote_plus(self.password.get_secret_value())
+        return f"postgresql+psycopg://{user}:{password}@{self.host}:{self.port}/{self.name}"
 
 
 class Settings(BaseSettings):
