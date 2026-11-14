@@ -61,6 +61,7 @@ class QualityConfig(BaseModel):
     min_rows: int = Field(gt=0)
     min_join_match_rate: float = Field(ge=0, le=1)
     max_missing_rate: float = Field(ge=0, le=1)
+    min_episode_agreement_rate: float = Field(ge=0, le=1)
     target_min: float
     target_max: float
     # Part minimale du catalogue MAL qui doit avoir un score (la cible).

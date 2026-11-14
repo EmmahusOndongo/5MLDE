@@ -17,6 +17,7 @@ def quality():
         min_rows=10,
         min_join_match_rate=0.9,
         max_missing_rate=0.3,
+        min_episode_agreement_rate=0.9,
         target_min=0.0,
         target_max=10.0,
         min_target_rate=0.5,
@@ -208,3 +209,68 @@ def test_report_is_archived_on_failure(mal_data, quality, tmp_path):
     payload = json.loads(report.report_path.read_text("utf-8"))
     assert payload["success"] is False
     assert len(payload["failures"]) == 1
+
+
+# --- Jeu fusionné --------------------------------------------------------------
+
+
+@pytest.fixture
+def merged_data():
+    """Jeu d'entraînement conforme : 90 % d'animes retrouvés dans AniList."""
+    in_anilist = [True] * (ROWS - 2) + [False] * 2
+    return pd.DataFrame(
+        {
+            "id": range(1, ROWS + 1),
+            "mean": [7.0] * ROWS,
+            "has_anilist": in_anilist,
+            "episodes_agree": pd.array(
+                [True if found else None for found in in_anilist], "boolean"
+            ),
+            "media_type": ["tv"] * ROWS,
+            "rating": ["pg_13"] * ROWS,
+            "num_episodes": [12] * ROWS,
+            "average_episode_duration": [1440] * ROWS,
+            "start_date": ["2020-04-03"] * ROWS,
+            "genres": ["Action"] * ROWS,
+            "studios": ["Sunrise"] * ROWS,
+            "source": ["MANGA" if found else None for found in in_anilist],
+            "tags": [["Space"] if found else None for found in in_anilist],
+        }
+    )
+
+
+def run_merged(data, quality, tmp_path):
+    return v.validate(data, v.merged_suite(quality), "abc123_2026-11-14", tmp_path, NOW)
+
+
+def test_valid_merged_batch_passes(merged_data, quality, tmp_path):
+    report = run_merged(merged_data, quality, tmp_path)
+
+    assert report.success, report.failures
+    assert report.source == "fusion"
+
+
+def test_low_join_match_rate_is_blocking(merged_data, quality, tmp_path):
+    merged_data["has_anilist"] = [True] * (ROWS // 2) + [False] * (ROWS // 2)
+
+    report = run_merged(merged_data, quality, tmp_path)
+
+    assert ("expect_column_values_to_be_in_set", "has_anilist") in failed_rules(report)
+    with pytest.raises(v.DataQualityError):
+        v.validate_merged(merged_data, "abc123_2026-11-14", quality, tmp_path)
+
+
+def test_sources_disagreeing_on_episodes_is_blocking(merged_data, quality, tmp_path):
+    merged_data["episodes_agree"] = pd.array([False] * 5 + [True] * (ROWS - 5), "boolean")
+
+    report = run_merged(merged_data, quality, tmp_path)
+
+    assert failed_rules(report) == {("expect_column_values_to_be_in_set", "episodes_agree")}
+
+
+def test_too_many_missing_values_in_a_feature_is_blocking(merged_data, quality, tmp_path):
+    merged_data.loc[: ROWS // 2, "studios"] = None
+
+    report = run_merged(merged_data, quality, tmp_path)
+
+    assert failed_rules(report) == {("expect_column_values_to_not_be_null", "studios")}

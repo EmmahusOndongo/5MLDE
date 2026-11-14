@@ -64,6 +64,19 @@ ANILIST_REQUIRED_COLUMNS = [
     "prequel_id_mal",
 ]
 
+# Colonnes du jeu d'entraînement dont le taux de valeurs manquantes est plafonné.
+MERGED_MONITORED_COLUMNS = [
+    "media_type",
+    "rating",
+    "num_episodes",
+    "average_episode_duration",
+    "start_date",
+    "genres",
+    "studios",
+    "source",
+    "tags",
+]
+
 
 @dataclass(frozen=True)
 class CheckFailure:
@@ -148,6 +161,32 @@ def anilist_suite(quality: QualityConfig) -> gx.ExpectationSuite:
     return gx.ExpectationSuite(name="anilist", expectations=expectations)
 
 
+def merged_suite(quality: QualityConfig) -> gx.ExpectationSuite:
+    """Règles du jeu d'entraînement fusionné (MAL enrichi par AniList)."""
+    completeness = 1 - quality.max_missing_rate
+    expectations = [
+        gxe.ExpectTableRowCountToBeBetween(min_value=quality.min_rows),
+        gxe.ExpectColumnValuesToBeUnique(column="id"),
+        gxe.ExpectColumnValuesToNotBeNull(column="mean"),
+        gxe.ExpectColumnValuesToBeBetween(
+            column="mean", min_value=quality.target_min, max_value=quality.target_max
+        ),
+        # Taux de correspondance MAL ↔ AniList.
+        gxe.ExpectColumnValuesToBeInSet(
+            column="has_anilist", value_set=[True], mostly=quality.min_join_match_rate
+        ),
+        # Cohérence inter-sources (les lignes où une source ignore la valeur sont exclues).
+        gxe.ExpectColumnValuesToBeInSet(
+            column="episodes_agree", value_set=[True], mostly=quality.min_episode_agreement_rate
+        ),
+        *(
+            gxe.ExpectColumnValuesToNotBeNull(column=column, mostly=completeness)
+            for column in MERGED_MONITORED_COLUMNS
+        ),
+    ]
+    return gx.ExpectationSuite(name="fusion", expectations=expectations)
+
+
 def validate(
     data: pd.DataFrame,
     suite: gx.ExpectationSuite,
@@ -209,6 +248,12 @@ def validate_anilist(
     data: pd.DataFrame, extraction_date: str, quality: QualityConfig, reports_dir: Path
 ) -> ValidationReport:
     return ensure_valid(validate(data, anilist_suite(quality), extraction_date, reports_dir))
+
+
+def validate_merged(
+    training: pd.DataFrame, data_version: str, quality: QualityConfig, reports_dir: Path
+) -> ValidationReport:
+    return ensure_valid(validate(training, merged_suite(quality), data_version, reports_dir))
 
 
 def _describe(check) -> CheckFailure:

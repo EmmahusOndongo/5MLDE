@@ -31,8 +31,15 @@ sources:
 
 quality:
   min_rows: 1000
-  min_join_match_rate: 0.90
+  # Part minimale du jeu d'entraînement retrouvée dans AniList. Mesuré : 87 % ; AniList ne
+  # référence pas tous les clips, publicités et courts formats. Sous 80 %, l'extraction
+  # est considérée comme défaillante.
+  min_join_match_rate: 0.80
+  # Taux maximal de valeurs manquantes par colonne du jeu d'entraînement.
   max_missing_rate: 0.30
+  # Part minimale d'animes pour lesquels MAL et AniList donnent le même nombre d'épisodes
+  # (mesuré : 98 %).
+  min_episode_agreement_rate: 0.90
   target_min: 0.0
   target_max: 10.0
   # Au moins la moitié du catalogue MAL doit avoir un score.
