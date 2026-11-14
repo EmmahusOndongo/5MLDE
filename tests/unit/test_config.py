@@ -19,6 +19,7 @@ def test_default_config_loads():
     assert 0 < settings.quality.min_join_match_rate <= 1
     assert settings.database.name == "anime"
     assert settings.api.model_alias == "champion"
+    assert settings.api.workers == 1
 
 
 def test_env_variable_overrides_yaml(monkeypatch):
