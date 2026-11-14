@@ -1,4 +1,8 @@
-"""Source AniList : API GraphQL publique, extraite par pages et mise en cache Parquet daté.
+"""Source AniList : API GraphQL publique, interrogée par lots d'identifiants MAL, avec cache
+Parquet daté.
+
+L'API plafonne la pagination simple à 5 000 résultats : on demande donc les animes
+par lots d'identifiants MyAnimeList (``idMal_in``), ce qui cible exactement le catalogue.
 
 La date d'extraction est la version des données. Si l'API est indisponible,
 on se replie sur le cache le plus récent plutôt que de casser la chaîne.
@@ -6,7 +10,7 @@ on se replie sur le cache le plus récent plutôt que de casser la chaîne.
 
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -23,10 +27,10 @@ _DEFAULT_RATE_LIMIT_WAIT_SECONDS = 60.0
 _CACHE_PREFIX = "anilist_"
 
 QUERY = """
-query ($page: Int, $perPage: Int) {
+query ($ids: [Int], $page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
     pageInfo { hasNextPage }
-    media(type: ANIME, sort: ID) {
+    media(type: ANIME, sort: ID, idMal_in: $ids) {
       id
       idMal
       format
@@ -67,6 +71,7 @@ class AnilistExtract:
 
 
 def get_extract(
+    mal_ids: Iterable[int],
     config: AnilistSourceConfig,
     cache_dir: Path,
     today: date | None = None,
@@ -83,7 +88,7 @@ def get_extract(
         return AnilistExtract(pd.read_parquet(todays_cache), today, todays_cache, is_fallback=False)
 
     try:
-        data = fetch_all(config, client=client, sleep=sleep)
+        data = fetch_by_mal_ids(mal_ids, config, client=client, sleep=sleep)
     except AnilistUnavailableError as exc:
         fallback = latest_cache(directory)
         if fallback is None:
@@ -104,25 +109,36 @@ def get_extract(
     return AnilistExtract(data, today, todays_cache, is_fallback=False)
 
 
-def fetch_all(
+def fetch_by_mal_ids(
+    mal_ids: Iterable[int],
     config: AnilistSourceConfig,
     client: httpx.Client | None = None,
     sleep: Callable[[float], None] = time.sleep,
 ) -> pd.DataFrame:
-    """Parcourt toutes les pages de l'API en respectant la limite de requêtes."""
+    """Récupère les animes AniList correspondant aux identifiants MAL, lot par lot."""
+    ids = sorted({int(mal_id) for mal_id in mal_ids})
+    batches = [ids[i : i + config.page_size] for i in range(0, len(ids), config.page_size)]
+    if config.max_batches is not None:
+        batches = batches[: config.max_batches]
+
     owns_client = client is None
     client = client or httpx.Client(timeout=_TIMEOUT_SECONDS)
     records: list[dict] = []
     try:
-        page = 1
-        while True:
-            payload = _fetch_page(client, config, page, sleep)
-            records.extend(parse_media(media) for media in payload["media"])
-            reached_limit = config.max_pages is not None and page >= config.max_pages
-            if not payload["pageInfo"]["hasNextPage"] or reached_limit:
-                break
-            page += 1
-            sleep(config.request_interval_seconds)
+        for index, batch in enumerate(batches):
+            if index > 0:
+                sleep(config.request_interval_seconds)
+            page = 1
+            while True:
+                payload = _fetch_page(client, config, batch, page, sleep)
+                records.extend(parse_media(media) for media in payload["media"])
+                # Plusieurs fiches AniList peuvent pointer vers le même identifiant MAL.
+                if not payload["pageInfo"]["hasNextPage"]:
+                    break
+                page += 1
+                sleep(config.request_interval_seconds)
+            if (index + 1) % 50 == 0:
+                logger.info("AniList : %d lots sur %d récupérés.", index + 1, len(batches))
     finally:
         if owns_client:
             client.close()
@@ -130,7 +146,24 @@ def fetch_all(
     data = pd.DataFrame(records, columns=COLUMNS)
     # Un anime AniList sans identifiant MAL ne peut pas être joint : il est écarté ici.
     data = data.dropna(subset=["id_mal"]).astype({"id_mal": "int64"})
-    return data.reset_index(drop=True)
+    return deduplicate(data)
+
+
+def deduplicate(data: pd.DataFrame) -> pd.DataFrame:
+    """Garde une seule fiche AniList par identifiant MAL (la plus ancienne), de façon stable.
+
+    AniList contient quelques fiches en double pointant vers le même anime MAL ;
+    sans ce choix déterministe, la jointure dupliquerait des lignes.
+    """
+    data = data.sort_values("anilist_id", kind="stable")
+    duplicated = data["id_mal"].duplicated(keep="first")
+    if duplicated.any():
+        logger.warning(
+            "AniList : %d fiche(s) en double écartée(s) (identifiants MAL : %s).",
+            int(duplicated.sum()),
+            sorted(data.loc[duplicated, "id_mal"].unique().tolist())[:10],
+        )
+    return data.loc[~duplicated].sort_values("id_mal", kind="stable").reset_index(drop=True)
 
 
 def parse_media(media: dict) -> dict:
@@ -172,12 +205,17 @@ def _cache_path(directory: Path, day: date) -> Path:
 def _fetch_page(
     client: httpx.Client,
     config: AnilistSourceConfig,
+    mal_ids: list[int],
     page: int,
     sleep: Callable[[float], None],
 ) -> dict:
-    """Récupère une page, avec nouvelles tentatives sur erreur réseau, 5xx ou limite atteinte."""
-    body = {"query": QUERY, "variables": {"page": page, "perPage": config.page_size}}
+    """Récupère une page d'un lot ; réessaie sur erreur réseau, 5xx ou limite atteinte."""
+    body = {
+        "query": QUERY,
+        "variables": {"ids": mal_ids, "page": page, "perPage": config.page_size},
+    }
     last_error = "aucune tentative effectuée"
+    label = f"lot {mal_ids[0]}-{mal_ids[-1]} page {page}"
 
     for attempt in range(config.max_retries + 1):
         if attempt > 0:
@@ -186,32 +224,32 @@ def _fetch_page(
             response = client.post(config.url, json=body)
         except httpx.TransportError as exc:
             last_error = f"erreur réseau ({exc.__class__.__name__})"
-            logger.warning("AniList page %d, tentative %d : %s", page, attempt + 1, last_error)
+            logger.warning("AniList %s, tentative %d : %s", label, attempt + 1, last_error)
             continue
 
         if response.status_code == httpx.codes.TOO_MANY_REQUESTS:
             wait = _retry_after_seconds(response)
             last_error = "limite de requêtes atteinte (HTTP 429)"
-            logger.warning("AniList page %d : %s, attente de %.0f s.", page, last_error, wait)
+            logger.warning("AniList %s : %s, attente de %.0f s.", label, last_error, wait)
             sleep(wait)
             continue
         if response.status_code >= httpx.codes.INTERNAL_SERVER_ERROR:
             last_error = f"erreur serveur (HTTP {response.status_code})"
-            logger.warning("AniList page %d, tentative %d : %s", page, attempt + 1, last_error)
+            logger.warning("AniList %s, tentative %d : %s", label, attempt + 1, last_error)
             continue
         if response.status_code != httpx.codes.OK:
             # Erreur côté client (requête refusée) : réessayer ne changerait rien.
             raise AnilistUnavailableError(
-                f"page {page} refusée par AniList (HTTP {response.status_code})"
+                f"{label} refusé par AniList (HTTP {response.status_code})"
             )
 
         try:
             return response.json()["data"]["Page"]
         except (ValueError, KeyError, TypeError) as exc:
-            raise AnilistUnavailableError(f"page {page} : réponse au format inattendu") from exc
+            raise AnilistUnavailableError(f"{label} : réponse au format inattendu") from exc
 
     raise AnilistUnavailableError(
-        f"page {page} : {last_error} après {config.max_retries + 1} tentative(s)"
+        f"{label} : {last_error} après {config.max_retries + 1} tentative(s)"
     )
 
 

@@ -23,7 +23,8 @@ def ingest(settings: Settings, mal_commit: str | None = None) -> IngestionResult
         logger.info("Aucun commit MAL configuré : dernier commit retenu (%s).", commit)
 
     snapshot = mal.download_snapshot(commit, settings.sources.mal, settings.paths.raw_dir)
-    extract = anilist.get_extract(settings.sources.anilist, settings.paths.cache_dir)
+    mal_ids = mal.load_snapshot(snapshot)["id"]
+    extract = anilist.get_extract(mal_ids, settings.sources.anilist, settings.paths.cache_dir)
     return IngestionResult(mal=snapshot, anilist=extract)
 
 

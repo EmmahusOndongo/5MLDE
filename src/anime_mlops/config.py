@@ -48,8 +48,8 @@ class AnilistSourceConfig(BaseModel):
     retry_delay_seconds: float = Field(ge=0)
     # Pause entre deux pages, pour rester sous la limite de requêtes de l'API.
     request_interval_seconds: float = Field(ge=0)
-    # Plafond de pages (None = tout le catalogue) ; utile pour une démonstration rapide.
-    max_pages: int | None = Field(default=None, gt=0)
+    # Plafond de lots (None = tout le catalogue) ; utile pour une démonstration rapide.
+    max_batches: int | None = Field(default=None, gt=0)
 
 
 class SourcesConfig(BaseModel):
@@ -63,6 +63,10 @@ class QualityConfig(BaseModel):
     max_missing_rate: float = Field(ge=0, le=1)
     target_min: float
     target_max: float
+    # Part minimale du catalogue MAL qui doit avoir un score (la cible).
+    min_target_rate: float = Field(ge=0, le=1)
+    # Part minimale de valeurs appartenant aux catégories connues (tolère une nouveauté marginale).
+    min_known_category_rate: float = Field(ge=0, le=1)
 
 
 class ModelConfig(BaseModel):

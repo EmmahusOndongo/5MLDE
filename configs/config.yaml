@@ -20,13 +20,14 @@ sources:
     commit: null
   anilist:
     url: https://graphql.anilist.co
+    # Nombre d'identifiants MAL demandés par requête (maximum accepté par l'API : 50).
     page_size: 50
     max_retries: 3
     retry_delay_seconds: 5
-    # 2 s entre deux pages = 30 requêtes/minute, sous la limite publique d'AniList.
+    # 2 s entre deux requêtes = 30 requêtes/minute, sous la limite publique d'AniList.
     request_interval_seconds: 2.0
-    # null = catalogue complet (plusieurs centaines de pages) ; un entier limite l'extraction.
-    max_pages: null
+    # null = catalogue complet (plusieurs centaines de lots) ; un entier limite l'extraction.
+    max_batches: null
 
 quality:
   min_rows: 1000
@@ -34,6 +35,10 @@ quality:
   max_missing_rate: 0.30
   target_min: 0.0
   target_max: 10.0
+  # Au moins la moitié du catalogue MAL doit avoir un score.
+  min_target_rate: 0.50
+  # Au moins 99 % des valeurs doivent appartenir aux catégories connues.
+  min_known_category_rate: 0.99
 
 model:
   type: random_forest

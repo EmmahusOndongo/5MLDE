@@ -5,6 +5,7 @@ description = "Chaîne MLOps de prédiction du score MyAnimeList d'un anime avan
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
+    "great-expectations>=1.25,<2",
     "httpx>=0.27,<1",
     "pandas>=2.2,<3",
     "pyarrow>=17",
