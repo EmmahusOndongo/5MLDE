@@ -47,6 +47,11 @@ mlflow:
   experiment_name: anime-score
   registered_model_name: anime-score-regressor
 
+api:
+  # Alias mutable décidé par A ; l'API résout ensuite une version immuable au chargement.
+  model_alias: champion
+  max_batch_size: 100
+
 database:
   host: localhost
   port: 5432

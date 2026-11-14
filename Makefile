@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint format test up down logs
+.PHONY: help setup lint format test api register-mock-model up down logs
 
 help:  ## Liste les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -17,6 +17,12 @@ format:  ## Corrige automatiquement le style
 
 test:  ## Tests unitaires (sans la stack Docker)
 	uv run pytest -m "not integration"
+
+api:  ## Lance l'API de prédiction en développement
+	uv run uvicorn anime_mlops.api.main:app --reload
+
+register-mock-model:  ## Enregistre un modèle factice sous l'alias champion
+	uv run python -m anime_mlops.api.register_mock_model
 
 up:  ## Démarre la stack Docker (PostgreSQL, MLflow)
 	docker compose up -d --build --wait

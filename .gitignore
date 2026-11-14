@@ -223,6 +223,7 @@ __marimo__/
 # Données téléchargées par script, jamais versionnées
 data/
 # Artefacts MLflow locaux
+mlflow.db
 mlruns/
 mlartifacts/
 # Résultats bruts des tests de charge

@@ -5,12 +5,18 @@ description = "Chaîne MLOps de prédiction du score MyAnimeList d'un anime avan
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
+    "fastapi==0.162.2",
+    "mlflow==3.18.0",
+    "pandas>=2.2,<3",
     "pydantic>=2.9,<3",
     "pydantic-settings[yaml]>=2.6,<3",
+    "scikit-learn>=1.5,<2",
+    "uvicorn[standard]>=0.38,<1",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.13,<3",
     "pytest>=8.3",
     "pytest-cov>=6.0",
     "ruff>=0.8",

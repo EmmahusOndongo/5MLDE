@@ -78,6 +78,11 @@ class MlflowConfig(BaseModel):
     registered_model_name: str
 
 
+class ApiConfig(BaseModel):
+    model_alias: str = Field(min_length=1)
+    max_batch_size: int = Field(gt=0, le=1000)
+
+
 class DatabaseConfig(BaseModel):
     host: str
     port: int
@@ -107,6 +112,7 @@ class Settings(BaseSettings):
     quality: QualityConfig
     model: ModelConfig
     mlflow: MlflowConfig
+    api: ApiConfig
     database: DatabaseConfig
 
     @classmethod
