@@ -28,6 +28,8 @@ services:
         condition: service_healthy
     environment:
       MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mlflow
+      # DNS interne pour l'API ; noms locaux usuels pour les commandes et l'UI de développement.
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow:5000,localhost:*,127.0.0.1:*"
     command: >
       mlflow server
       --host 0.0.0.0
@@ -63,6 +65,29 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+    restart: unless-stopped
+
+  # API de prédiction : http://localhost:8000/docs
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    environment:
+      ANIME_CONFIG_FILE: /app/configs/config.yaml
+      ANIME_DATABASE__HOST: postgres
+      ANIME_DATABASE__PASSWORD: ${POSTGRES_PASSWORD:?définir POSTGRES_PASSWORD dans .env}
+      ANIME_MLFLOW__TRACKING_URI: http://mlflow:5000
+      ANIME_API__HOST: 0.0.0.0
+      ANIME_API__PORT: 8000
+      ANIME_API__WORKERS: ${API_WORKERS:-1}
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+    ports:
+      - "${API_PORT:-8000}:8000"
     restart: unless-stopped
 
 volumes:

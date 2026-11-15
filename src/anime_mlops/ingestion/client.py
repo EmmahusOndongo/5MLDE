@@ -34,14 +34,15 @@ def pull_batch(
             response = client.get(url, params=params)
         else:
             response = httpx.get(url, params=params, timeout=_TIMEOUT_SECONDS)
-        response.raise_for_status()
-        return DailyBatch.model_validate(response.json())
-    except httpx.HTTPStatusError as exc:
-        raise SourceUnavailableError(
-            f"La source a refusé le lot du {day} (HTTP {exc.response.status_code})."
-        ) from exc
     except httpx.HTTPError as exc:
         raise SourceUnavailableError(f"Source injoignable ({url}) : {exc}") from exc
+    # Code vérifié à la main : l'exception de ``raise_for_status`` dépend du client fourni.
+    if response.status_code >= 400:
+        raise SourceUnavailableError(
+            f"La source a refusé le lot du {day} (HTTP {response.status_code})."
+        )
+    try:
+        return DailyBatch.model_validate(response.json())
     except (ValidationError, ValueError) as exc:
         raise SourceUnavailableError(f"Lot du {day} au format inattendu : {exc}") from exc
 

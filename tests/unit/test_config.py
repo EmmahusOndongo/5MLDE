@@ -18,6 +18,8 @@ def test_default_config_loads():
     assert settings.model.n_estimators > 0
     assert 0 < settings.quality.min_join_match_rate <= 1
     assert settings.database.name == "anime"
+    assert settings.api.model_alias == "champion"
+    assert settings.api.workers == 1
 
 
 def test_env_variable_overrides_yaml(monkeypatch):
@@ -53,6 +55,15 @@ def test_database_password_is_not_exposed(monkeypatch):
 
     assert "s3cret" not in repr(settings)
     assert "s3cret" in settings.database.url
+
+
+def test_database_credentials_are_url_encoded(monkeypatch):
+    monkeypatch.setenv("ANIME_DATABASE__PASSWORD", "p@ss/word")
+
+    url = Settings().database.url
+
+    assert "p%40ss%2Fword" in url
+    assert "p@ss/word" not in url
 
 
 def test_mal_raw_url_requires_a_commit():

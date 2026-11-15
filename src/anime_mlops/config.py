@@ -8,6 +8,7 @@ import os
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import yaml
 from pydantic import BaseModel, Field, SecretStr
@@ -98,19 +99,30 @@ class MlflowConfig(BaseModel):
     registered_model_name: str
 
 
+class ApiConfig(BaseModel):
+    model_alias: str = Field(min_length=1)
+    max_batch_size: int = Field(gt=0, le=1000)
+    host: str = Field(min_length=1)
+    port: int = Field(gt=0, le=65_535)
+    workers: int = Field(gt=0, le=32)
+
+
 class DatabaseConfig(BaseModel):
     host: str
     port: int
     name: str
     user: str
+    connect_timeout_seconds: int = Field(gt=0, le=30)
+    retry_cooldown_seconds: float = Field(ge=0, le=300)
     # Jamais dans le YAML : fourni par ANIME_DATABASE__PASSWORD (.env ou environnement).
     password: SecretStr = SecretStr("")
 
     @property
     def url(self) -> str:
         """URL SQLAlchemy (contient le mot de passe : ne pas journaliser)."""
-        password = self.password.get_secret_value()
-        return f"postgresql+psycopg://{self.user}:{password}@{self.host}:{self.port}/{self.name}"
+        user = quote_plus(self.user)
+        password = quote_plus(self.password.get_secret_value())
+        return f"postgresql+psycopg://{user}:{password}@{self.host}:{self.port}/{self.name}"
 
 
 class ReplayConfig(BaseModel):
@@ -153,6 +165,7 @@ class Settings(BaseSettings):
     quality: QualityConfig
     model: ModelConfig
     mlflow: MlflowConfig
+    api: ApiConfig
     database: DatabaseConfig
     replay: ReplayConfig
     alerts: AlertsConfig
