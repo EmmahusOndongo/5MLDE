@@ -11,6 +11,7 @@ paths:
   raw_dir: data/raw
   cache_dir: data/cache
   reports_dir: data/reports
+  landing_dir: data/landing
 
 sources:
   mal:
@@ -62,6 +63,13 @@ mlflow:
   tracking_uri: http://localhost:5000
   experiment_name: anime-score
   registered_model_name: anime-score-regressor
+
+# Rejeu journalier : le jeu de données est figé, on simule donc son arrivée jour par jour.
+replay:
+  # Premier jour rejoué ; les animes antérieurs forment l'historique d'entraînement.
+  start_day: 2025-01-01
+  source_url: http://localhost:8100
+  push_target_url: http://localhost:8101/batches
 
 database:
   host: localhost

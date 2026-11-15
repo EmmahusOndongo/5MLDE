@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint format test ingest train promote rollback status up down logs
+.PHONY: help setup lint format test ingest train promote rollback status replay receiver up down logs
 
 help:  ## Liste les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -32,6 +32,12 @@ promote:  ## Applique les règles de promotion (dernière version, ou VERSION=N)
 
 rollback:  ## Retour arrière du champion (version remplacée, ou VERSION=N)
 	uv run python -m anime_mlops.training.promote rollback $(if $(VERSION),--version $(VERSION))
+
+replay:  ## Source simulée : rejoue le catalogue jour par jour (port 8100)
+	uv run uvicorn anime_mlops.replay.app:app --port 8100
+
+receiver:  ## Point de réception des lots poussés par la source (port 8101)
+	uv run uvicorn anime_mlops.ingestion.receiver:app --port 8101
 
 up:  ## Démarre la stack Docker (PostgreSQL, MLflow)
 	docker compose up -d --build --wait

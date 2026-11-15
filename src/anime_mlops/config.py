@@ -5,6 +5,7 @@ variables d'environnement ``ANIME_*``, fichier ``.env``, puis ``configs/config.y
 """
 
 import os
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -28,6 +29,8 @@ class PathsConfig(BaseModel):
     raw_dir: Path
     cache_dir: Path
     reports_dir: Path
+    # Lots journaliers reçus (pull ou push), avant traitement.
+    landing_dir: Path
 
 
 class MalSourceConfig(BaseModel):
@@ -104,6 +107,17 @@ class DatabaseConfig(BaseModel):
         return f"postgresql+psycopg://{self.user}:{password}@{self.host}:{self.port}/{self.name}"
 
 
+class ReplayConfig(BaseModel):
+    """Simulation de l'arrivée quotidienne des données à partir de l'instantané figé."""
+
+    # Premier jour rejoué ; tout ce qui précède forme l'historique connu d'emblée.
+    start_day: date
+    # Adresse de la source simulée (mode pull).
+    source_url: str
+    # Point de réception du pipeline, vers lequel la source envoie les lots (mode push).
+    push_target_url: str
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="ANIME_",
@@ -119,6 +133,7 @@ class Settings(BaseSettings):
     model: ModelConfig
     mlflow: MlflowConfig
     database: DatabaseConfig
+    replay: ReplayConfig
 
     @classmethod
     def settings_customise_sources(
