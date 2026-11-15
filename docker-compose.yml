@@ -28,8 +28,8 @@ services:
         condition: service_healthy
     environment:
       MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mlflow
-      # Le client API utilise le nom DNS interne "mlflow" ; localhost reste autorisé pour l'UI.
-      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow:5000,localhost:*"
+      # DNS interne pour l'API ; noms locaux usuels pour les commandes et l'UI de développement.
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow:5000,localhost:*,127.0.0.1:*"
     command: >
       mlflow server
       --host 0.0.0.0

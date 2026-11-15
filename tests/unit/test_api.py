@@ -18,7 +18,11 @@ from anime_mlops.api.persistence import (
     PredictionNotFoundError,
     PredictionRow,
 )
-from anime_mlops.api.schemas import PREDICTION_FEATURES, ModelMetadata
+from anime_mlops.api.schemas import (
+    NUMERIC_PREDICTION_FEATURES,
+    PREDICTION_FEATURES,
+    ModelMetadata,
+)
 from anime_mlops.config import Settings
 
 
@@ -158,6 +162,12 @@ def test_nominal_endpoints_expose_the_served_version():
     assert batch.json()["persisted"] is True
     assert batch.json()["model"]["version"] == "1"
     assert loader.predictor.frames[0].columns.tolist() == PREDICTION_FEATURES
+    assert all(
+        frame[NUMERIC_PREDICTION_FEATURES].dtypes.eq("float64").all()
+        for frame in loader.predictor.frames
+    )
+    assert pd.isna(loader.predictor.frames[0].loc[0, "prequel_score"])
+    assert persistence.traces[0].input_data["prequel_score"] is None
     assert len(persistence.traces) == 3
     assert {trace.model_version for trace in persistence.traces} == {"1"}
 

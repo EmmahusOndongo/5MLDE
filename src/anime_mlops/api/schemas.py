@@ -21,6 +21,12 @@ PREDICTION_FEATURES = [
     "studios",
     "tags",
 ]
+NUMERIC_PREDICTION_FEATURES = [
+    "num_episodes",
+    "average_episode_duration",
+    "start_year",
+    "prequel_score",
+]
 
 PositiveEpisodes = Annotated[int, Field(gt=0, le=10_000)]
 PositiveDuration = Annotated[float, Field(gt=0, le=604_800)]

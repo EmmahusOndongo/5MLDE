@@ -27,6 +27,7 @@ from anime_mlops.api.persistence import (
     PredictionTrace,
 )
 from anime_mlops.api.schemas import (
+    NUMERIC_PREDICTION_FEATURES,
     PREDICTION_FEATURES,
     BatchPredictionRequest,
     BatchPredictionResponse,
@@ -222,7 +223,7 @@ def create_app(
     def predict_one(payload: PredictionInput) -> PredictionResponse:
         prediction_id = uuid4()
         record = payload.to_record()
-        model_input = pd.DataFrame.from_records([record], columns=PREDICTION_FEATURES)
+        model_input = _model_frame([record])
         started_at = perf_counter()
         try:
             predictions, metadata = runtime.predict(model_input)
@@ -275,7 +276,7 @@ def create_app(
                 },
             )
         records = [instance.to_record() for instance in payload.instances]
-        model_input = pd.DataFrame.from_records(records, columns=PREDICTION_FEATURES)
+        model_input = _model_frame(records)
         batch_id = uuid4()
         prediction_ids = [uuid4() for _instance in payload.instances]
         started_at = perf_counter()
@@ -349,6 +350,15 @@ def create_app(
         return ReloadResponse(model=runtime.reload())
 
     return application
+
+
+def _model_frame(records: list[dict[str, object]]) -> pd.DataFrame:
+    """Reproduit les dtypes numériques float64 produits par le pipeline de features."""
+    frame = pd.DataFrame.from_records(records, columns=PREDICTION_FEATURES)
+    # MLflow applique strictement la signature enregistrée et refuse notamment int64 -> float64.
+    # astype convertit aussi les valeurs absentes en NaN, que les imputers du modèle gèrent.
+    frame[NUMERIC_PREDICTION_FEATURES] = frame[NUMERIC_PREDICTION_FEATURES].astype("float64")
+    return frame
 
 
 def _error_response(status_code: int, *, code: str, message: str) -> JSONResponse:
