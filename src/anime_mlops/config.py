@@ -85,6 +85,9 @@ class ApiConfig(BaseModel):
     host: str = Field(min_length=1)
     port: int = Field(gt=0, le=65_535)
     workers: int = Field(gt=0, le=32)
+    cache_enabled: bool
+    cache_max_entries: int = Field(gt=0, le=1_000_000)
+    cache_ttl_seconds: float = Field(gt=0, le=86_400)
 
 
 class DatabaseConfig(BaseModel):
