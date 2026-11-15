@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: Anime MLOps
+    orgId: 1
+    folder: Anime MLOps
+    folderUid: anime-mlops
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
