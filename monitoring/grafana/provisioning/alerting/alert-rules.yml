@@ -1,0 +1,223 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: Fiabilité du service
+    folder: Anime MLOps
+    interval: 30s
+    rules:
+      - uid: anime-api-error-rate
+        title: Taux d'erreurs API supérieur à 5 %
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: anime-prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: anime-prometheus
+              editorMode: code
+              expr: 100 * sum(rate(anime_api_http_errors_total[5m])) / clamp_min(sum(rate(anime_api_http_requests_total[5m])), 0.001)
+              instant: true
+              intervalMs: 1000
+              legendFormat: __auto
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions: []
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [5]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              refId: C
+              type: threshold
+        dashboardUid: anime-mlops-overview
+        panelId: 3
+        noDataState: OK
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          description: Le taux de réponses HTTP en erreur dépasse 5 % depuis au moins deux minutes.
+          summary: Dégradation de l'API de prédiction
+        labels:
+          component: api
+          severity: warning
+        isPaused: false
+
+      - uid: anime-api-latency-p95
+        title: Latence p95 supérieure à 1 seconde
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: anime-prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: anime-prometheus
+              editorMode: code
+              expr: histogram_quantile(0.95, sum by (le) (rate(anime_api_http_request_duration_seconds_bucket[5m])))
+              instant: true
+              intervalMs: 1000
+              legendFormat: __auto
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions: []
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [1]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              refId: C
+              type: threshold
+        dashboardUid: anime-mlops-overview
+        panelId: 4
+        noDataState: OK
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          description: La latence p95 de l'API dépasse une seconde depuis au moins deux minutes.
+          summary: Latence élevée sur l'API de prédiction
+        labels:
+          component: api
+          severity: warning
+        isPaused: false
+
+      - uid: anime-prefect-unavailable
+        title: Orchestrateur Prefect indisponible
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: anime-prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: anime-prometheus
+              editorMode: code
+              expr: min(anime_prefect_up)
+              instant: true
+              intervalMs: 1000
+              legendFormat: __auto
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions: []
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [1]
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              refId: C
+              type: threshold
+        dashboardUid: anime-mlops-overview
+        panelId: 14
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          description: L'exporteur ne parvient plus à interroger l'API Prefect.
+          summary: Les traitements orchestrés ne sont plus observables
+        labels:
+          component: prefect
+          severity: critical
+        isPaused: false
