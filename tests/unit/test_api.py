@@ -107,11 +107,12 @@ class MemoryPersistence:
         self.closed = True
 
 
-def build_app(loader, *, settings=None, persistence=None):
+def build_app(loader, *, settings=None, persistence=None, cache=None):
     return create_app(
         settings=settings or Settings(),
         loader=loader,
         persistence=persistence or MemoryPersistence(),
+        cache=cache,
     )
 
 
@@ -154,12 +155,14 @@ def test_nominal_endpoints_expose_the_served_version():
     assert model.json()["model"]["version"] == "1"
     assert prediction.status_code == 200
     assert prediction.json()["persisted"] is True
+    assert prediction.json()["cached"] is False
     assert prediction.json()["prediction"] == 7.25
     assert prediction.json()["model"]["version"] == "1"
     assert batch.status_code == 200
     assert batch.json()["predictions"] == [7.25, 7.25]
     assert batch.json()["count"] == 2
     assert batch.json()["persisted"] is True
+    assert batch.json()["cached"] is False
     assert batch.json()["model"]["version"] == "1"
     assert loader.predictor.frames[0].columns.tolist() == PREDICTION_FEATURES
     assert all(
@@ -184,6 +187,32 @@ def test_reload_atomically_changes_the_served_version():
     assert response.json()["status"] == "reloaded"
     assert response.json()["model"]["version"] == "2"
     assert prediction.json()["model"]["version"] == "2"
+
+
+def test_cache_avoids_recomputation_but_keeps_each_trace():
+    settings = Settings()
+    settings.api.cache_enabled = True
+    settings.api.cache_max_entries = 10
+    settings.api.cache_ttl_seconds = 60
+    loader = SequenceLoader()
+    persistence = MemoryPersistence()
+    application = build_app(loader, settings=settings, persistence=persistence)
+
+    with TestClient(application) as client:
+        first = client.post("/predict", json=prediction_payload())
+        second = client.post("/predict", json=prediction_payload())
+        reload_response = client.post("/admin/reload")
+        after_reload = client.post("/predict", json=prediction_payload())
+
+    assert first.status_code == second.status_code == after_reload.status_code == 200
+    assert first.json()["cached"] is False
+    assert second.json()["cached"] is True
+    assert after_reload.json()["cached"] is False
+    assert first.json()["prediction_id"] != second.json()["prediction_id"]
+    assert reload_response.json()["model"]["version"] == "2"
+    assert after_reload.json()["model"]["version"] == "2"
+    assert len(loader.predictor.frames) == 2
+    assert len(persistence.traces) == 3
 
 
 def test_invalid_inputs_are_rejected_before_the_model():

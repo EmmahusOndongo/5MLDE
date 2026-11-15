@@ -20,6 +20,7 @@ def test_default_config_loads():
     assert settings.database.name == "anime"
     assert settings.api.model_alias == "champion"
     assert settings.api.workers == 1
+    assert settings.api.cache_enabled is False
 
 
 def test_env_variable_overrides_yaml(monkeypatch):

@@ -10,6 +10,7 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
+from anime_mlops.api.cache import PredictionCache
 from anime_mlops.api.model_service import (
     MlflowRegistryLoader,
     ModelLoader,
@@ -51,6 +52,7 @@ def create_app(
     settings: Settings | None = None,
     loader: ModelLoader | None = None,
     persistence: Persistence | None = None,
+    cache: PredictionCache | None = None,
     load_model_on_startup: bool = True,
 ) -> FastAPI:
     """Construit l'application et permet d'injecter un chargeur isolé dans les tests."""
@@ -60,6 +62,11 @@ def create_app(
         resolved_settings.database.url,
         connect_timeout_seconds=resolved_settings.database.connect_timeout_seconds,
         retry_cooldown_seconds=resolved_settings.database.retry_cooldown_seconds,
+    )
+    resolved_cache = cache or PredictionCache(
+        enabled=resolved_settings.api.cache_enabled,
+        max_entries=resolved_settings.api.cache_max_entries,
+        ttl_seconds=resolved_settings.api.cache_ttl_seconds,
     )
     runtime = ModelRuntime(
         model_name=resolved_settings.mlflow.registered_model_name,
@@ -91,6 +98,7 @@ def create_app(
     )
     application.state.model_runtime = runtime
     application.state.persistence = resolved_persistence
+    application.state.cache = resolved_cache
 
     def build_trace(
         *,
@@ -224,9 +232,12 @@ def create_app(
         prediction_id = uuid4()
         record = payload.to_record()
         model_input = _model_frame([record])
+        cache_key = resolved_cache.key([record]) if resolved_cache.enabled else ""
         started_at = perf_counter()
         try:
-            predictions, metadata = runtime.predict(model_input)
+            predictions, metadata, cache_hit = runtime.predict_cached(
+                model_input, cache=resolved_cache, cache_key=cache_key
+            )
         except (ModelUnavailableError, PredictionError) as exc:
             duration_ms = (perf_counter() - started_at) * 1000
             resolved_persistence.record_predictions(
@@ -259,6 +270,7 @@ def create_app(
             prediction_id=prediction_id,
             prediction=predictions[0],
             persisted=persisted,
+            cached=cache_hit,
             model=metadata,
         )
 
@@ -277,11 +289,14 @@ def create_app(
             )
         records = [instance.to_record() for instance in payload.instances]
         model_input = _model_frame(records)
+        cache_key = resolved_cache.key(records) if resolved_cache.enabled else ""
         batch_id = uuid4()
         prediction_ids = [uuid4() for _instance in payload.instances]
         started_at = perf_counter()
         try:
-            predictions, metadata = runtime.predict(model_input)
+            predictions, metadata, cache_hit = runtime.predict_cached(
+                model_input, cache=resolved_cache, cache_key=cache_key
+            )
         except (ModelUnavailableError, PredictionError) as exc:
             duration_ms = (perf_counter() - started_at) * 1000
             resolved_persistence.record_predictions(
@@ -321,6 +336,7 @@ def create_app(
             predictions=predictions,
             count=len(predictions),
             persisted=persisted,
+            cached=cache_hit,
             model=metadata,
         )
 
@@ -347,7 +363,9 @@ def create_app(
 
     @application.post("/admin/reload", response_model=ReloadResponse, tags=["administration"])
     def reload_model() -> ReloadResponse:
-        return ReloadResponse(model=runtime.reload())
+        metadata = runtime.reload()
+        resolved_cache.clear()
+        return ReloadResponse(model=metadata)
 
     return application
 
