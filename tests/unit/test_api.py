@@ -179,11 +179,54 @@ def test_reload_atomically_changes_the_served_version():
     with TestClient(application) as client:
         response = client.post("/admin/reload")
         prediction = client.post("/predict", json=prediction_payload())
+        metrics = client.get("/metrics")
 
     assert response.status_code == 200
     assert response.json()["status"] == "reloaded"
     assert response.json()["model"]["version"] == "2"
     assert prediction.json()["model"]["version"] == "2"
+    assert (
+        'anime_api_model_info{model_alias="champion",model_name="anime-score-regressor",'
+        'model_version="1"} 0.0'
+    ) in metrics.text
+    assert (
+        'anime_api_model_info{model_alias="champion",model_name="anime-score-regressor",'
+        'model_version="2"} 1.0'
+    ) in metrics.text
+
+
+def test_metrics_expose_throughput_latency_errors_and_served_version():
+    application = build_app(SequenceLoader())
+    invalid_payload = prediction_payload()
+    invalid_payload["start_year"] = 1800
+
+    with TestClient(application) as client:
+        prediction = client.post("/predict", json=prediction_payload())
+        invalid = client.post("/predict", json=invalid_payload)
+        metrics = client.get("/metrics")
+
+    assert prediction.status_code == 200
+    assert invalid.status_code == 422
+    assert metrics.status_code == 200
+    assert metrics.headers["content-type"].startswith("text/plain")
+    assert (
+        'anime_api_http_requests_total{method="POST",route="/predict",status_code="200"} 1.0'
+    ) in metrics.text
+    assert (
+        'anime_api_http_errors_total{method="POST",route="/predict",status_code="422"} 1.0'
+    ) in metrics.text
+    assert (
+        'anime_api_http_request_duration_seconds_count{method="POST",route="/predict"} 2.0'
+    ) in metrics.text
+    assert (
+        'anime_api_predictions_total{endpoint="/predict",model_name="anime-score-regressor",'
+        'model_version="1"} 1.0'
+    ) in metrics.text
+    assert (
+        'anime_api_model_info{model_alias="champion",model_name="anime-score-regressor",'
+        'model_version="1"} 1.0'
+    ) in metrics.text
+    assert 'route="/metrics"' not in metrics.text
 
 
 def test_invalid_inputs_are_rejected_before_the_model():
