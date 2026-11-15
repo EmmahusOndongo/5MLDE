@@ -226,5 +226,6 @@ data/
 mlflow.db
 mlruns/
 mlartifacts/
-# Résultats bruts des tests de charge
-load_tests/results/*.csv
+# Résultats bruts des tests de charge (recréés par la matrice Locust)
+load_tests/results/*
+!load_tests/results/.gitkeep

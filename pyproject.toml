@@ -28,6 +28,9 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.8",
 ]
+load = [
+    "locust==2.46.7",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -48,6 +51,7 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "S", "PT"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]  # assert autorisé dans les tests
+"load_tests/run_matrix.py" = ["S603"]  # commandes Docker/Locust construites sans shell
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

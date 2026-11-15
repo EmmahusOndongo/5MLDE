@@ -1,5 +1,7 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint format test api register-mock-model up down logs
+.PHONY: help setup lint format test api register-mock-model up down logs load-test
+
+LOAD_TEST_ARGS ?=
 
 help:  ## Liste les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -32,3 +34,6 @@ down:  ## Arrête la stack Docker (les volumes sont conservés)
 
 logs:  ## Suit les journaux de la stack
 	docker compose logs -f
+
+load-test:  ## Lance la matrice Locust 1/2/4 workers, cache désactivé/activé
+	uv run --group load python -m load_tests.run_matrix $(LOAD_TEST_ARGS)
