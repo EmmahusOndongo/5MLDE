@@ -25,6 +25,9 @@ class DataVersions:
     anilist_sha256: str
     # True si AniList était indisponible et qu'un cache antérieur a servi.
     anilist_is_fallback: bool
+    # Rejeu journalier : dernier jour pris en compte et nombre de lots acceptés intégrés.
+    replay_as_of: str | None = None
+    replay_batches: int = 0
 
     @property
     def label(self) -> str:

@@ -31,6 +31,10 @@ class PathsConfig(BaseModel):
     reports_dir: Path
     # Lots journaliers reçus (pull ou push), avant traitement.
     landing_dir: Path
+    # Lots ayant passé les contrôles qualité : seuls ceux-ci alimentent l'entraînement.
+    accepted_dir: Path
+    # Lots rejetés par les contrôles qualité, conservés pour analyse.
+    quarantine_dir: Path
 
 
 class MalSourceConfig(BaseModel):
@@ -55,6 +59,8 @@ class AnilistSourceConfig(BaseModel):
     request_interval_seconds: float = Field(ge=0)
     # Plafond de lots (None = tout le catalogue) ; utile pour une démonstration rapide.
     max_batches: int | None = Field(default=None, gt=0)
+    # Âge maximal (en jours) d'un cache réutilisé tel quel ; au-delà, nouvelle extraction.
+    cache_max_age_days: int = Field(default=0, ge=0)
 
 
 class SourcesConfig(BaseModel):
@@ -118,6 +124,21 @@ class ReplayConfig(BaseModel):
     push_target_url: str
 
 
+class AlertsConfig(BaseModel):
+    # Journal local des alertes (une ligne JSON par alerte).
+    file: Path
+    # Webhook optionnel (Slack, Discord, Teams…) : fourni par ANIME_ALERTS__WEBHOOK_URL.
+    webhook_url: SecretStr | None = None
+
+
+class SchedulesConfig(BaseModel):
+    """Planification des flows (expressions cron, fuseau ci-dessous)."""
+
+    timezone: str
+    daily_ingestion: str
+    weekly_training: str
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="ANIME_",
@@ -134,6 +155,8 @@ class Settings(BaseSettings):
     mlflow: MlflowConfig
     database: DatabaseConfig
     replay: ReplayConfig
+    alerts: AlertsConfig
+    schedules: SchedulesConfig
 
     @classmethod
     def settings_customise_sources(

@@ -8,6 +8,7 @@ l'entraînement ne démarre pas.
 import json
 import logging
 import os
+import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +24,10 @@ import great_expectations as gx  # noqa: E402
 import great_expectations.expectations as gxe  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+# Great Expectations garde un contexte global : deux validations simultanées (tâches
+# parallèles de l'orchestrateur) se marcheraient dessus. On les sérialise.
+_VALIDATION_LOCK = threading.Lock()
 
 MAL_REQUIRED_COLUMNS = [
     "id",
@@ -63,6 +68,21 @@ ANILIST_REQUIRED_COLUMNS = [
     "is_sequel",
     "prequel_id_mal",
 ]
+
+BATCH_ANNOUNCED_COLUMNS = [
+    "id",
+    "title",
+    "start_date",
+    "media_type",
+    "rating",
+    "num_episodes",
+    "average_episode_duration",
+    "genres",
+    "studios",
+    "status",
+    "already_known",
+]
+BATCH_SCORE_COLUMNS = ["id", "mean"]
 
 # Colonnes du jeu d'entraînement dont le taux de valeurs manquantes est plafonné.
 MERGED_MONITORED_COLUMNS = [
@@ -187,6 +207,39 @@ def merged_suite(quality: QualityConfig) -> gx.ExpectationSuite:
     return gx.ExpectationSuite(name="fusion", expectations=expectations)
 
 
+def announcements_suite(quality: QualityConfig) -> gx.ExpectationSuite:
+    """Règles des animes annoncés dans un lot journalier (aucune taille minimale : ~3 par jour)."""
+    expectations = [
+        gxe.ExpectTableColumnsToMatchSet(column_set=BATCH_ANNOUNCED_COLUMNS, exact_match=False),
+        gxe.ExpectColumnValuesToNotBeNull(column="id"),
+        gxe.ExpectColumnValuesToBeUnique(column="id"),
+        gxe.ExpectColumnValuesToNotBeNull(column="title"),
+        gxe.ExpectColumnValuesToBeBetween(column="num_episodes", min_value=0),
+        gxe.ExpectColumnValuesToBeBetween(column="average_episode_duration", min_value=0),
+        gxe.ExpectColumnValuesToMatchRegex(column="start_date", regex=MAL_DATE_PATTERN),
+        gxe.ExpectColumnValuesToBeInSet(column="media_type", value_set=MAL_MEDIA_TYPES),
+        # Une annonce ne concerne que des animes pas encore diffusés.
+        gxe.ExpectColumnValuesToBeInSet(column="status", value_set=["not_yet_aired"]),
+        # Un anime n'est annoncé qu'une fois.
+        gxe.ExpectColumnValuesToBeInSet(column="already_known", value_set=[False]),
+    ]
+    return gx.ExpectationSuite(name="lot_annonces", expectations=expectations)
+
+
+def scores_suite(quality: QualityConfig) -> gx.ExpectationSuite:
+    """Règles des scores révélés dans un lot journalier."""
+    expectations = [
+        gxe.ExpectTableColumnsToMatchSet(column_set=BATCH_SCORE_COLUMNS, exact_match=False),
+        gxe.ExpectColumnValuesToNotBeNull(column="id"),
+        gxe.ExpectColumnValuesToBeUnique(column="id"),
+        gxe.ExpectColumnValuesToNotBeNull(column="mean"),
+        gxe.ExpectColumnValuesToBeBetween(
+            column="mean", min_value=quality.target_min, max_value=quality.target_max
+        ),
+    ]
+    return gx.ExpectationSuite(name="lot_scores", expectations=expectations)
+
+
 def validate(
     data: pd.DataFrame,
     suite: gx.ExpectationSuite,
@@ -195,14 +248,17 @@ def validate(
     now: datetime | None = None,
 ) -> ValidationReport:
     """Exécute la suite sur le lot et archive le rapport, que le lot soit conforme ou non."""
-    context = gx.get_context(mode="ephemeral")
-    context.variables.progress_bars = gx.data_context.types.base.ProgressBarsConfig(globally=False)
-    batch_definition = (
-        context.data_sources.add_pandas(suite.name)
-        .add_dataframe_asset(suite.name)
-        .add_batch_definition_whole_dataframe("lot")
-    )
-    result = batch_definition.get_batch(batch_parameters={"dataframe": data}).validate(suite)
+    with _VALIDATION_LOCK:
+        context = gx.get_context(mode="ephemeral")
+        context.variables.progress_bars = gx.data_context.types.base.ProgressBarsConfig(
+            globally=False
+        )
+        batch_definition = (
+            context.data_sources.add_pandas(suite.name)
+            .add_dataframe_asset(suite.name)
+            .add_batch_definition_whole_dataframe("lot")
+        )
+        result = batch_definition.get_batch(batch_parameters={"dataframe": data}).validate(suite)
 
     failures = tuple(_describe(check) for check in result.results if not check.success)
     report = ValidationReport(

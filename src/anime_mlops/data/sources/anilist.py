@@ -87,6 +87,19 @@ def get_extract(
         logger.info("Cache AniList du %s réutilisé.", today)
         return AnilistExtract(pd.read_parquet(todays_cache), today, todays_cache, is_fallback=False)
 
+    recent = latest_cache(directory)
+    if recent is not None and (today - recent[0]).days <= config.cache_max_age_days:
+        # Cache encore assez frais : ce n'est pas un repli, juste une extraction évitée.
+        recent_date, recent_path = recent
+        logger.info(
+            "Cache AniList du %s réutilisé (moins de %d jours).",
+            recent_date,
+            config.cache_max_age_days,
+        )
+        return AnilistExtract(
+            pd.read_parquet(recent_path), recent_date, recent_path, is_fallback=False
+        )
+
     try:
         data = fetch_by_mal_ids(mal_ids, config, client=client, sleep=sleep)
     except AnilistUnavailableError as exc:

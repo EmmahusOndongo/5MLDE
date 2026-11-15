@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint format test ingest train promote rollback status replay receiver up down logs
+.PHONY: help setup lint format test ingest train promote rollback status replay receiver flows daily pipeline demo-incident up down logs
 
 help:  ## Liste les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -38,6 +38,18 @@ replay:  ## Source simulée : rejoue le catalogue jour par jour (port 8100)
 
 receiver:  ## Point de réception des lots poussés par la source (port 8101)
 	uv run uvicorn anime_mlops.ingestion.receiver:app --port 8101
+
+flows:  ## Planifie et exécute les flows Prefect (reste au premier plan)
+	uv run python -m anime_mlops.flows.cli serve
+
+daily:  ## Traite le lot du prochain jour (ou DAY=AAAA-MM-JJ)
+	uv run python -m anime_mlops.flows.cli daily $(if $(DAY),--day $(DAY))
+
+pipeline:  ## Flow d'entraînement complet : contrôles, entraînement, promotion
+	uv run python -m anime_mlops.flows.cli training
+
+demo-incident:  ## Incident contrôlé : lot invalide, rejeté et mis en quarantaine
+	uv run python -m anime_mlops.flows.cli daily --corrupt $(if $(DAY),--day $(DAY))
 
 up:  ## Démarre la stack Docker (PostgreSQL, MLflow)
 	docker compose up -d --build --wait

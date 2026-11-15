@@ -12,6 +12,8 @@ paths:
   cache_dir: data/cache
   reports_dir: data/reports
   landing_dir: data/landing
+  accepted_dir: data/accepted
+  quarantine_dir: data/quarantine
 
 sources:
   mal:
@@ -29,6 +31,8 @@ sources:
     request_interval_seconds: 2.0
     # null = catalogue complet (plusieurs centaines de lots) ; un entier limite l'extraction.
     max_batches: null
+    # L'extraction complète prend ~20 min : un cache de moins de 7 jours est réutilisé.
+    cache_max_age_days: 7
 
 quality:
   min_rows: 1000
@@ -70,6 +74,17 @@ replay:
   start_day: 2025-01-01
   source_url: http://localhost:8100
   push_target_url: http://localhost:8101/batches
+
+alerts:
+  file: data/reports/alerts.jsonl
+
+# Déclenchement automatique des flows Prefect.
+schedules:
+  timezone: Europe/Paris
+  # Tous les jours à 06:00 : ingestion et contrôle du lot du jour.
+  daily_ingestion: "0 6 * * *"
+  # Tous les lundis à 07:00 : réentraînement et promotion éventuelle.
+  weekly_training: "0 7 * * 1"
 
 database:
   host: localhost
