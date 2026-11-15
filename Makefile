@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint format test ingest train promote rollback status replay receiver flows daily pipeline demo-incident api register-mock-model up down logs
+.PHONY: help setup lint format test ingest train promote rollback status replay receiver flows daily pipeline feedback demo-incident api register-mock-model up down logs
 
 help:  ## Liste les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -47,6 +47,9 @@ daily:  ## Traite le lot du prochain jour (ou DAY=AAAA-MM-JJ)
 
 pipeline:  ## Flow d'entraînement complet : contrôles, entraînement, promotion
 	uv run python -m anime_mlops.flows.cli training
+
+feedback:  ## Feedback automatique : prédit les annonces, rattache les scores réels
+	uv run python -m anime_mlops.flows.cli feedback
 
 demo-incident:  ## Incident contrôlé : lot invalide, rejeté et mis en quarantaine
 	uv run python -m anime_mlops.flows.cli daily --corrupt $(if $(DAY),--day $(DAY))

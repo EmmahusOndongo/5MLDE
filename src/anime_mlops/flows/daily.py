@@ -2,6 +2,9 @@
 
 Un lot rejeté part en quarantaine, le flow échoue et une alerte est émise : il
 n'alimentera jamais l'entraînement.
+
+Un lot accepté déclenche le feedback automatique : ses annonces sont prédites, et les
+scores qu'il révèle sont comparés aux prédictions faites la veille.
 """
 
 from datetime import date
@@ -12,6 +15,7 @@ from anime_mlops.alerts import Alert, Level, send_alert
 from anime_mlops.config import get_settings
 from anime_mlops.data.validate import DataQualityError, ValidationReport
 from anime_mlops.flows.common import alert_on_failure, publish_validation_reports
+from anime_mlops.flows.feedback import feedback_flow
 from anime_mlops.ingestion.schemas import DailyBatch
 from anime_mlops.pipeline import steps
 from anime_mlops.replay.app import load_catalogue
@@ -107,10 +111,20 @@ def daily_ingestion_flow(day: date | None = None, corrupt: bool = False) -> dict
         len(batch.announced),
         len(batch.scores),
     )
+    feedback = None
+    if settings.feedback.enabled:
+        try:
+            feedback = feedback_flow()
+        except Exception as exc:
+            # Le lot reste accepté : le feedback (qui a émis sa propre alerte) sera
+            # rattrapé au prochain passage.
+            logger.warning("Feedback automatique reporté : %s", exc)
+
     return {
         "day": day.isoformat(),
         "status": "accepted",
         "announced": len(batch.announced),
         "scores": len(batch.scores),
         "orphan_scores": check.orphan_scores,
+        "feedback": feedback,
     }

@@ -14,6 +14,7 @@ paths:
   landing_dir: data/landing
   accepted_dir: data/accepted
   quarantine_dir: data/quarantine
+  predictions_dir: data/predictions
 
 sources:
   mal:
@@ -74,6 +75,14 @@ replay:
   start_day: 2025-01-01
   source_url: http://localhost:8100
   push_target_url: http://localhost:8101/batches
+
+# Feedback automatique : chaque anime annoncé est prédit via l'API, puis comparé à son
+# score réel quand un lot ultérieur le révèle.
+feedback:
+  enabled: true
+  api_url: http://localhost:8000
+  batch_size: 100
+  timeout_seconds: 30
 
 alerts:
   file: data/reports/alerts.jsonl

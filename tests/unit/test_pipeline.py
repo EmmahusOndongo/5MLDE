@@ -86,6 +86,9 @@ def settings(monkeypatch, tmp_path):
         "ANIME_PATHS__LANDING_DIR": data_dir / "landing",
         "ANIME_PATHS__ACCEPTED_DIR": data_dir / "accepted",
         "ANIME_PATHS__QUARANTINE_DIR": data_dir / "quarantine",
+        "ANIME_PATHS__PREDICTIONS_DIR": data_dir / "predictions",
+        # Le feedback automatique a ses propres tests (test_feedback.py).
+        "ANIME_FEEDBACK__ENABLED": "false",
         "ANIME_ALERTS__FILE": data_dir / "reports" / "alerts.jsonl",
         "ANIME_SOURCES__MAL__COMMIT": COMMIT,
         "ANIME_QUALITY__MIN_ROWS": 20,
@@ -273,6 +276,7 @@ def test_daily_flow_accepts_a_valid_batch(settings, source):
         "announced": 2,
         "scores": 0,
         "orphan_scores": 0,
+        "feedback": None,
     }
     assert landing.landed_days(settings.paths.accepted_dir) == [DAY_1]
     assert landing.landed_days(settings.paths.quarantine_dir) == []

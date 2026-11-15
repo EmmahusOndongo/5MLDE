@@ -36,6 +36,8 @@ class PathsConfig(BaseModel):
     accepted_dir: Path
     # Lots rejetés par les contrôles qualité, conservés pour analyse.
     quarantine_dir: Path
+    # Registre des prédictions faites à l'annonce, en attente de leur score réel.
+    predictions_dir: Path
 
 
 class MalSourceConfig(BaseModel):
@@ -136,6 +138,18 @@ class ReplayConfig(BaseModel):
     push_target_url: str
 
 
+class FeedbackConfig(BaseModel):
+    """Feedback automatique : prédire à l'annonce, comparer au score réel le lendemain."""
+
+    # Désactivable quand l'API de prédiction ne tourne pas (ingestion seule).
+    enabled: bool
+    # Adresse de l'API de prédiction interrogée par le pipeline.
+    api_url: str
+    # Animes par appel à /predict/batch (au plus ``api.max_batch_size``).
+    batch_size: int = Field(gt=0, le=1000)
+    timeout_seconds: float = Field(gt=0)
+
+
 class AlertsConfig(BaseModel):
     # Journal local des alertes (une ligne JSON par alerte).
     file: Path
@@ -168,6 +182,7 @@ class Settings(BaseSettings):
     api: ApiConfig
     database: DatabaseConfig
     replay: ReplayConfig
+    feedback: FeedbackConfig
     alerts: AlertsConfig
     schedules: SchedulesConfig
 

@@ -3,6 +3,7 @@
     python -m anime_mlops.flows.cli serve                      # planification automatique
     python -m anime_mlops.flows.cli daily [--day 2025-01-05] [--corrupt]
     python -m anime_mlops.flows.cli training [--as-of 2025-01-31]
+    python -m anime_mlops.flows.cli feedback                   # rattrapage du feedback
 
 ``serve`` reste au premier plan : il enregistre les deux déploiements auprès du serveur
 Prefect et exécute les flows aux heures prévues (ou à la demande depuis l'interface).
@@ -17,6 +18,7 @@ from prefect.schedules import Cron
 
 from anime_mlops.config import get_settings
 from anime_mlops.flows.daily import daily_ingestion_flow
+from anime_mlops.flows.feedback import feedback_flow
 from anime_mlops.flows.training import training_flow
 
 
@@ -51,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     daily.add_argument("--corrupt", action="store_true", help="demande un lot invalide")
     training = commands.add_parser("training", help="réentraîne le modèle")
     training.add_argument("--as-of", type=date.fromisoformat, help="dernier jour pris en compte")
+    commands.add_parser("feedback", help="prédit les annonces et rattache les scores réels")
     arguments = parser.parse_args(argv)
 
     if arguments.command == "serve":
@@ -59,8 +62,10 @@ def main(argv: list[str] | None = None) -> int:
     # Un flow en échec renvoie un état « Failed » : on le traduit en code de retour.
     if arguments.command == "daily":
         state = daily_ingestion_flow(arguments.day, arguments.corrupt, return_state=True)
-    else:
+    elif arguments.command == "training":
         state = training_flow(arguments.as_of, return_state=True)
+    else:
+        state = feedback_flow(return_state=True)
     return 0 if state.is_completed() else 1
 
 
