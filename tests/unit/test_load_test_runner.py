@@ -27,6 +27,10 @@ def test_scenario_matrix_covers_workers_and_cache_modes():
     assert scenarios[-1].label == "workers-4_cache-on"
 
 
+def test_scenario_matrix_can_select_cache_only():
+    assert build_scenarios([1, 4], (True,)) == [Scenario(1, True), Scenario(4, True)]
+
+
 @pytest.mark.parametrize(
     ("raw_value", "expected"),
     [("12.50%", 12.5), ("512MiB / 8GiB", 512.0), ("1.5GiB / 8GiB", 1536.0)],

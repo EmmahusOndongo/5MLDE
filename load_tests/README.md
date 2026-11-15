@@ -37,6 +37,13 @@ Les paramètres peuvent être transmis à la cible Make :
 make load-test LOAD_TEST_ARGS="--users 100 --spawn-rate 50 --run-time 2m"
 ```
 
+Pour un palier complémentaire limité au cache activé :
+
+```bash
+uv run --group load python -m load_tests.run_matrix \
+  --cache-modes on --users 25 --spawn-rate 25 --run-time 30s
+```
+
 `--keep-stack` conserve la stack isolée après la campagne. Pour mesurer un vrai modèle déjà
 enregistré dans un autre projet Compose, fournir les mêmes `POSTGRES_USER` et
 `POSTGRES_PASSWORD`, puis utiliser `--skip-bootstrap --project-name <projet>` et les ports

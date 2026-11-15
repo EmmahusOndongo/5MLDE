@@ -48,11 +48,13 @@ class ResourceSample:
     memory_mib: float
 
 
-def build_scenarios(workers: list[int]) -> list[Scenario]:
+def build_scenarios(
+    workers: list[int], cache_modes: tuple[bool, ...] = (False, True)
+) -> list[Scenario]:
     return [
         Scenario(api_workers=worker_count, cache_enabled=cache_enabled)
         for worker_count in workers
-        for cache_enabled in (False, True)
+        for cache_enabled in cache_modes
     ]
 
 
@@ -444,6 +446,13 @@ def _run_scenario(
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workers", nargs="+", type=int, default=[1, 2, 4])
+    parser.add_argument(
+        "--cache-modes",
+        nargs="+",
+        choices=("off", "on"),
+        default=["off", "on"],
+        help="modes de cache à mesurer ; la matrice complète utilise off on",
+    )
     parser.add_argument("--users", type=int, default=50)
     parser.add_argument("--spawn-rate", type=float, default=50)
     parser.add_argument("--run-time", default="60s")
@@ -471,6 +480,8 @@ def _validate_arguments(args: argparse.Namespace) -> None:
         raise ValueError("users et spawn-rate doivent être strictement positifs.")
     if args.resource_sample_interval <= 0:
         raise ValueError("L'intervalle de mesure doit être strictement positif.")
+    if len(set(args.cache_modes)) != len(args.cache_modes):
+        raise ValueError("Chaque mode de cache ne doit apparaître qu'une fois.")
     for port in (args.api_port, args.postgres_port, args.mlflow_port):
         if not 1 <= port <= 65_535:
             raise ValueError("Les ports doivent être compris entre 1 et 65535.")
@@ -517,6 +528,7 @@ def run_matrix(args: argparse.Namespace) -> Path:
             "users": args.users,
             "spawn_rate": args.spawn_rate,
             "run_time": args.run_time,
+            "cache_modes": args.cache_modes,
             "workload": "90 % récurrente / 10 % unique, sans temps d'attente",
         },
         "scenarios": scenarios,
@@ -536,7 +548,8 @@ def run_matrix(args: argparse.Namespace) -> Path:
         elif not args.skip_build:
             _compose(docker_binary, args.project_name, "build", "api", environment=environment)
 
-        for scenario in build_scenarios(args.workers):
+        cache_modes = tuple(mode == "on" for mode in args.cache_modes)
+        for scenario in build_scenarios(args.workers, cache_modes):
             print(f"\n=== {scenario.label} ===", flush=True)
             result = _run_scenario(
                 scenario,
