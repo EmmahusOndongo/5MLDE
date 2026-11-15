@@ -8,8 +8,9 @@ from uuid import UUID, uuid4
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
+from anime_mlops.api.metrics import PROMETHEUS_CONTENT_TYPE, ApiMetrics
 from anime_mlops.api.model_service import (
     MlflowRegistryLoader,
     ModelLoader,
@@ -51,6 +52,7 @@ def create_app(
     settings: Settings | None = None,
     loader: ModelLoader | None = None,
     persistence: Persistence | None = None,
+    metrics: ApiMetrics | None = None,
     load_model_on_startup: bool = True,
 ) -> FastAPI:
     """Construit l'application et permet d'injecter un chargeur isolé dans les tests."""
@@ -61,6 +63,7 @@ def create_app(
         connect_timeout_seconds=resolved_settings.database.connect_timeout_seconds,
         retry_cooldown_seconds=resolved_settings.database.retry_cooldown_seconds,
     )
+    resolved_metrics = metrics or ApiMetrics.create()
     runtime = ModelRuntime(
         model_name=resolved_settings.mlflow.registered_model_name,
         alias=resolved_settings.api.model_alias,
@@ -72,7 +75,7 @@ def create_app(
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if load_model_on_startup:
             try:
-                runtime.reload()
+                resolved_metrics.set_model(runtime.reload())
             except ModelLoadError:
                 # Le processus reste vivant pour exposer /health et permettre /admin/reload.
                 LOGGER.warning("L'API démarre sans modèle disponible.", exc_info=True)
@@ -91,6 +94,28 @@ def create_app(
     )
     application.state.model_runtime = runtime
     application.state.persistence = resolved_persistence
+    application.state.metrics = resolved_metrics
+
+    @application.middleware("http")
+    async def observe_http_requests(request: Request, call_next):
+        if request.url.path == "/metrics":
+            return await call_next(request)
+
+        resolved_metrics.in_flight.inc()
+        started_at = perf_counter()
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            return response
+        finally:
+            resolved_metrics.in_flight.dec()
+            resolved_metrics.observe_http(
+                method=request.method,
+                route=_route_template(request),
+                status_code=status_code,
+                duration=perf_counter() - started_at,
+            )
 
     def build_trace(
         *,
@@ -219,6 +244,13 @@ def create_app(
     def model() -> ModelResponse:
         return ModelResponse(model=runtime.metadata())
 
+    @application.get("/metrics", include_in_schema=False)
+    def prometheus_metrics() -> Response:
+        return Response(
+            content=resolved_metrics.render(),
+            headers={"Content-Type": PROMETHEUS_CONTENT_TYPE},
+        )
+
     @application.post("/predict", response_model=PredictionResponse, tags=["prédiction"])
     def predict_one(payload: PredictionInput) -> PredictionResponse:
         prediction_id = uuid4()
@@ -243,6 +275,9 @@ def create_app(
             raise
 
         duration_ms = (perf_counter() - started_at) * 1000
+        resolved_metrics.observe_predictions(
+            endpoint="/predict", count=len(predictions), metadata=metadata
+        )
         persisted = resolved_persistence.record_predictions(
             [
                 build_trace(
@@ -300,6 +335,9 @@ def create_app(
             raise
 
         duration_ms = (perf_counter() - started_at) * 1000
+        resolved_metrics.observe_predictions(
+            endpoint="/predict/batch", count=len(predictions), metadata=metadata
+        )
         persisted = resolved_persistence.record_predictions(
             [
                 build_trace(
@@ -347,7 +385,9 @@ def create_app(
 
     @application.post("/admin/reload", response_model=ReloadResponse, tags=["administration"])
     def reload_model() -> ReloadResponse:
-        return ReloadResponse(model=runtime.reload())
+        metadata = runtime.reload()
+        resolved_metrics.set_model(metadata)
+        return ReloadResponse(model=metadata)
 
     return application
 
@@ -359,6 +399,11 @@ def _model_frame(records: list[dict[str, object]]) -> pd.DataFrame:
     # astype convertit aussi les valeurs absentes en NaN, que les imputers du modèle gèrent.
     frame[NUMERIC_PREDICTION_FEATURES] = frame[NUMERIC_PREDICTION_FEATURES].astype("float64")
     return frame
+
+
+def _route_template(request: Request) -> str:
+    route = request.scope.get("route")
+    return getattr(route, "path", "unmatched")
 
 
 def _error_response(status_code: int, *, code: str, message: str) -> JSONResponse:
