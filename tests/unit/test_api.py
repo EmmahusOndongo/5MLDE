@@ -107,11 +107,12 @@ class MemoryPersistence:
         self.closed = True
 
 
-def build_app(loader, *, settings=None, persistence=None):
+def build_app(loader, *, settings=None, persistence=None, cache=None):
     return create_app(
         settings=settings or Settings(),
         loader=loader,
         persistence=persistence or MemoryPersistence(),
+        cache=cache,
     )
 
 
@@ -154,12 +155,14 @@ def test_nominal_endpoints_expose_the_served_version():
     assert model.json()["model"]["version"] == "1"
     assert prediction.status_code == 200
     assert prediction.json()["persisted"] is True
+    assert prediction.json()["cached"] is False
     assert prediction.json()["prediction"] == 7.25
     assert prediction.json()["model"]["version"] == "1"
     assert batch.status_code == 200
     assert batch.json()["predictions"] == [7.25, 7.25]
     assert batch.json()["count"] == 2
     assert batch.json()["persisted"] is True
+    assert batch.json()["cached"] is False
     assert batch.json()["model"]["version"] == "1"
     assert loader.predictor.frames[0].columns.tolist() == PREDICTION_FEATURES
     assert all(
@@ -179,11 +182,80 @@ def test_reload_atomically_changes_the_served_version():
     with TestClient(application) as client:
         response = client.post("/admin/reload")
         prediction = client.post("/predict", json=prediction_payload())
+        metrics = client.get("/metrics")
 
     assert response.status_code == 200
     assert response.json()["status"] == "reloaded"
     assert response.json()["model"]["version"] == "2"
     assert prediction.json()["model"]["version"] == "2"
+    assert (
+        'anime_api_model_info{model_alias="champion",model_name="anime-score-regressor",'
+        'model_version="1"} 0.0'
+    ) in metrics.text
+    assert (
+        'anime_api_model_info{model_alias="champion",model_name="anime-score-regressor",'
+        'model_version="2"} 1.0'
+    ) in metrics.text
+
+
+def test_metrics_expose_throughput_latency_errors_and_served_version():
+    application = build_app(SequenceLoader())
+    invalid_payload = prediction_payload()
+    invalid_payload["start_year"] = 1800
+
+    with TestClient(application) as client:
+        prediction = client.post("/predict", json=prediction_payload())
+        invalid = client.post("/predict", json=invalid_payload)
+        metrics = client.get("/metrics")
+
+    assert prediction.status_code == 200
+    assert invalid.status_code == 422
+    assert metrics.status_code == 200
+    assert metrics.headers["content-type"].startswith("text/plain")
+    assert (
+        'anime_api_http_requests_total{method="POST",route="/predict",status_code="200"} 1.0'
+    ) in metrics.text
+    assert (
+        'anime_api_http_errors_total{method="POST",route="/predict",status_code="422"} 1.0'
+    ) in metrics.text
+    assert (
+        'anime_api_http_request_duration_seconds_count{method="POST",route="/predict"} 2.0'
+    ) in metrics.text
+    assert (
+        'anime_api_predictions_total{endpoint="/predict",model_name="anime-score-regressor",'
+        'model_version="1"} 1.0'
+    ) in metrics.text
+    assert (
+        'anime_api_model_info{model_alias="champion",model_name="anime-score-regressor",'
+        'model_version="1"} 1.0'
+    ) in metrics.text
+    assert 'route="/metrics"' not in metrics.text
+
+
+def test_cache_avoids_recomputation_but_keeps_each_trace():
+    settings = Settings()
+    settings.api.cache_enabled = True
+    settings.api.cache_max_entries = 10
+    settings.api.cache_ttl_seconds = 60
+    loader = SequenceLoader()
+    persistence = MemoryPersistence()
+    application = build_app(loader, settings=settings, persistence=persistence)
+
+    with TestClient(application) as client:
+        first = client.post("/predict", json=prediction_payload())
+        second = client.post("/predict", json=prediction_payload())
+        reload_response = client.post("/admin/reload")
+        after_reload = client.post("/predict", json=prediction_payload())
+
+    assert first.status_code == second.status_code == after_reload.status_code == 200
+    assert first.json()["cached"] is False
+    assert second.json()["cached"] is True
+    assert after_reload.json()["cached"] is False
+    assert first.json()["prediction_id"] != second.json()["prediction_id"]
+    assert reload_response.json()["model"]["version"] == "2"
+    assert after_reload.json()["model"]["version"] == "2"
+    assert len(loader.predictor.frames) == 2
+    assert len(persistence.traces) == 3
 
 
 def test_invalid_inputs_are_rejected_before_the_model():

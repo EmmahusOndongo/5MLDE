@@ -85,6 +85,7 @@ class PredictionResponse(BaseModel):
     prediction_id: UUID
     prediction: float
     persisted: bool
+    cached: bool
     model: ModelMetadata
 
 
@@ -93,6 +94,7 @@ class BatchPredictionResponse(BaseModel):
     predictions: list[float]
     count: int
     persisted: bool
+    cached: bool
     model: ModelMetadata
 
 

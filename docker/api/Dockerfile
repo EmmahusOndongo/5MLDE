@@ -24,7 +24,8 @@ ENV ANIME_CONFIG_FILE=/app/configs/config.yaml \
     PYTHONUNBUFFERED=1
 
 RUN groupadd --system anime \
-    && useradd --system --gid anime --create-home anime
+    && useradd --system --gid anime --create-home anime \
+    && install -d --owner=anime --group=anime /tmp/prometheus
 
 WORKDIR /app
 

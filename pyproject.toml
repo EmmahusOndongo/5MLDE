@@ -15,6 +15,7 @@ dependencies = [
     "pyarrow>=17",
     "pydantic>=2.9,<3",
     "pydantic-settings[yaml]>=2.6,<3",
+    "prometheus-client==0.26.0",
     "scikit-learn>=1.5,<2",
     "skops>=0.16,<1",
     "sqlalchemy>=2.0,<3",
@@ -30,6 +31,9 @@ dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
     "ruff>=0.8",
+]
+load = [
+    "locust==2.46.7",
 ]
 
 [build-system]
@@ -55,6 +59,7 @@ extend-immutable-calls = ["fastapi.Query", "fastapi.Depends", "fastapi.Body", "f
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]  # assert autorisé dans les tests
+"load_tests/run_matrix.py" = ["S603"]  # commandes Docker/Locust construites sans shell
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
