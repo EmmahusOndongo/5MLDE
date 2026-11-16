@@ -1,5 +1,7 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint format test ingest train promote rollback status replay receiver flows daily pipeline feedback demo-incident api register-mock-model up down logs monitoring-logs
+.PHONY: help setup lint format test ingest train promote rollback status replay receiver flows daily pipeline feedback demo-incident api register-mock-model up down logs monitoring-logs load-test
+
+LOAD_TEST_ARGS ?=
 
 help:  ## Liste les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -71,3 +73,6 @@ logs:  ## Suit les journaux de la stack
 
 monitoring-logs:  ## Suit uniquement Prometheus, Grafana et l'exporteur Prefect
 	docker compose logs -f prometheus grafana prefect-exporter
+
+load-test:  ## Lance la matrice Locust 1/2/4 workers, cache désactivé/activé
+	uv run --group load python -m load_tests.run_matrix $(LOAD_TEST_ARGS)

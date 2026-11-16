@@ -102,6 +102,9 @@ api:
   host: 127.0.0.1
   port: 8000
   workers: 1
+  cache_enabled: false
+  cache_max_entries: 10000
+  cache_ttl_seconds: 300
 
 database:
   host: localhost

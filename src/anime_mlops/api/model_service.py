@@ -40,6 +40,12 @@ class ModelLoader(Protocol):
     def load(self, model_name: str, alias: str) -> LoadedModel: ...
 
 
+class PredictionCacheProtocol(Protocol):
+    def get(self, key: str, *, model_version: str) -> tuple[float, ...] | None: ...
+
+    def put(self, key: str, predictions: list[float], *, model_version: str) -> None: ...
+
+
 class MlflowRegistryLoader:
     """Résout un alias MLflow puis charge explicitement la version correspondante."""
 
@@ -118,12 +124,36 @@ class ModelRuntime:
             return self._last_error
 
     def predict(self, model_input: pd.DataFrame) -> tuple[list[float], ModelMetadata]:
+        loaded = self._loaded_model()
+        return self._predict_loaded(loaded, model_input), loaded.metadata
+
+    def predict_cached(
+        self,
+        model_input: pd.DataFrame,
+        *,
+        cache: PredictionCacheProtocol,
+        cache_key: str,
+    ) -> tuple[list[float], ModelMetadata, bool]:
+        """Utilise un seul instantané du modèle pour la clé, le résultat et les métadonnées."""
+        loaded = self._loaded_model()
+        cached = cache.get(cache_key, model_version=loaded.metadata.version)
+        if cached is not None:
+            predictions = _coerce_predictions(cached, expected_count=len(model_input))
+            return predictions, loaded.metadata, True
+
+        predictions = self._predict_loaded(loaded, model_input)
+        cache.put(cache_key, predictions, model_version=loaded.metadata.version)
+        return predictions, loaded.metadata, False
+
+    def _loaded_model(self) -> LoadedModel:
         with self._state_lock:
             loaded = self._loaded
-
         if loaded is None:
             raise ModelUnavailableError("Aucun modèle n'est chargé.")
+        return loaded
 
+    @staticmethod
+    def _predict_loaded(loaded: LoadedModel, model_input: pd.DataFrame) -> list[float]:
         try:
             raw_predictions = loaded.predictor.predict(model_input)
             predictions = _coerce_predictions(raw_predictions, expected_count=len(model_input))
@@ -131,8 +161,7 @@ class ModelRuntime:
             raise
         except Exception as exc:
             raise PredictionError("Le modèle n'a pas pu calculer la prédiction.") from exc
-
-        return predictions, loaded.metadata
+        return predictions
 
 
 def _coerce_predictions(raw_predictions, *, expected_count: int) -> list[float]:
