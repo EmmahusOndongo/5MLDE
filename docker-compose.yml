@@ -86,11 +86,105 @@ services:
       ANIME_API__PORT: 8000
       ANIME_API__WORKERS: ${API_WORKERS:-1}
       MLFLOW_DISABLE_AGENT_HINT: "1"
+      PROMETHEUS_DISABLE_CREATED_SERIES: "true"
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus
     ports:
       - "${API_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  prefect-exporter:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    command: ["python", "-m", "anime_mlops.monitoring.prefect_exporter"]
+    environment:
+      PREFECT_API_URL: ${PREFECT_API_URL:-http://prefect:4200/api}
+      PREFECT_EXPORTER_PORT: 9105
+      PREFECT_EXPORTER_POLL_SECONDS: ${PREFECT_EXPORTER_POLL_SECONDS:-15}
+      PREFECT_EXPORTER_TIMEOUT_SECONDS: ${PREFECT_EXPORTER_TIMEOUT_SECONDS:-3}
+      PREFECT_EXPORTER_RUN_LIMIT: ${PREFECT_EXPORTER_RUN_LIMIT:-200}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9105/metrics', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    depends_on:
+      api:
+        condition: service_healthy
+      prefect-exporter:
+        condition: service_healthy
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  grafana-db-init:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: anime
+      PGUSER: ${POSTGRES_USER:?définir POSTGRES_USER dans .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?définir POSTGRES_PASSWORD dans .env}
+      APP_DATABASE_USER: ${POSTGRES_USER:?définir POSTGRES_USER dans .env}
+      GRAFANA_DATABASE_USER: ${GRAFANA_DATABASE_USER:-grafana_reader}
+      GRAFANA_DATABASE_PASSWORD: ${GRAFANA_DATABASE_PASSWORD:?définir GRAFANA_DATABASE_PASSWORD dans .env}
+    volumes:
+      - ./monitoring/grafana/init-reader.sh:/usr/local/bin/init-reader.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/init-reader.sh"]
+    restart: "no"
+
+  grafana:
+    image: grafana/grafana:13.3.0
+    depends_on:
+      grafana-db-init:
+        condition: service_completed_successfully
+      prometheus:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?définir GRAFANA_ADMIN_PASSWORD dans .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/anime-mlops.json
+      GRAFANA_DATABASE_USER: ${GRAFANA_DATABASE_USER:-grafana_reader}
+      GRAFANA_DATABASE_PASSWORD: ${GRAFANA_DATABASE_PASSWORD:?définir GRAFANA_DATABASE_PASSWORD dans .env}
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
     restart: unless-stopped
 
 volumes:
   postgres_data:
   mlflow_artifacts:
   prefect_data:
+  prometheus_data:
+  grafana_data:

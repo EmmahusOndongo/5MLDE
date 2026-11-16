@@ -15,6 +15,7 @@ dependencies = [
     "pyarrow>=17",
     "pydantic>=2.9,<3",
     "pydantic-settings[yaml]>=2.6,<3",
+    "prometheus-client==0.26.0",
     "scikit-learn>=1.5,<2",
     "skops>=0.16,<1",
     "sqlalchemy>=2.0,<3",

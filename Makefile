@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint format test ingest train promote rollback status replay receiver flows daily pipeline feedback demo-incident api register-mock-model up down logs
+.PHONY: help setup lint format test ingest train promote rollback status replay receiver flows daily pipeline feedback demo-incident api register-mock-model up down logs monitoring-logs
 
 help:  ## Liste les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -68,3 +68,6 @@ down:  ## Arrête la stack Docker (les volumes sont conservés)
 
 logs:  ## Suit les journaux de la stack
 	docker compose logs -f
+
+monitoring-logs:  ## Suit uniquement Prometheus, Grafana et l'exporteur Prefect
+	docker compose logs -f prometheus grafana prefect-exporter
