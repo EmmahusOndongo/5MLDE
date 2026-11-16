@@ -1,7 +1,10 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint format test ingest train promote rollback status replay receiver flows daily pipeline feedback demo-incident api register-mock-model up down logs monitoring-logs load-test
+.PHONY: help setup lint format test ingest train promote rollback status replay receiver flows daily pipeline feedback demo-incident demo-nominal demo-postgres-incident api register-mock-model up down logs monitoring-logs load-test
 
 LOAD_TEST_ARGS ?=
+API_URL ?= http://127.0.0.1:8000
+PROJECT_NAME ?= anime-mlops
+CONFIRM_PROJECT ?=
 
 help:  ## Liste les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -55,6 +58,12 @@ feedback:  ## Feedback automatique : prédit les annonces, rattache les scores r
 
 demo-incident:  ## Incident contrôlé : lot invalide, rejeté et mis en quarantaine
 	uv run python -m anime_mlops.flows.cli daily --corrupt $(if $(DAY),--day $(DAY))
+
+demo-nominal:  ## Démonstration API : modèle, cache, persistance, feedback et métriques
+	uv run python -m anime_mlops.demos.service nominal --api-url $(API_URL)
+
+demo-postgres-incident:  ## Arrête/rétablit PostgreSQL (CONFIRM_PROJECT requis)
+	uv run python -m anime_mlops.demos.service postgres-outage --api-url $(API_URL) --project-name $(PROJECT_NAME) --confirm-project $(CONFIRM_PROJECT)
 
 api:  ## Lance l'API de prédiction en développement
 	uv run uvicorn anime_mlops.api.main:app --reload
