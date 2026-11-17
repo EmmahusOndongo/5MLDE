@@ -1,5 +1,5 @@
 # Règles de mise en service d'une version du modèle (registre MLflow).
-# Détail de la stratégie : docs/mise-en-service.md
+# Détail de la stratégie : section « Mise en service » du README
 
 # Métrique de décision, lue dans le run d'entraînement sous le nom "test_<metric>".
 decision_metric: mae

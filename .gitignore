@@ -229,3 +229,6 @@ mlartifacts/
 # Résultats bruts des tests de charge (recréés par la matrice Locust)
 load_tests/results/*
 !load_tests/results/.gitkeep
+
+# Notes personnelles (synthèse, démo, oral) : jamais versionnées
+/docs/
