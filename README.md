@@ -6,6 +6,9 @@ nombre d'épisodes, suite ou non), et de construire la chaîne MLOps complète a
 ingestion, contrôles qualité, entraînement suivi, mise en service, API, feedback et
 monitoring.
 
+Les choix techniques, les preuves d'intégration, les résultats des tests de charge, le
+dimensionnement recommandé et les limites sont détaillés dans [SYNTHESE_OPS.md](SYNTHESE_OPS.md).
+
 ## Données
 
 Les données ne sont pas versionnées. Elles sont téléchargées par les scripts dans `data/`.
@@ -210,6 +213,8 @@ simultanés, aucune requête en échec. Le cache multiplie le débit par 5 envir
 
 Sans cache, 4 workers ne tiennent que 51,8 req/s avec un p95 de 1,6 s à 50 utilisateurs.
 Mesures faites sur une seule machine (12 CPU logiques), avec 30 % de marge sur le débit.
+Détail des mesures dans [SYNTHESE_OPS.md](SYNTHESE_OPS.md) et
+[load_tests/mesures-2026-11-15.json](load_tests/mesures-2026-11-15.json).
 
 ## Cas d'usage simulés
 
